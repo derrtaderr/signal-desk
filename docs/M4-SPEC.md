@@ -456,3 +456,91 @@ Beyond the four registered above the line:
 - **A live run is not byte-reproducible**, only replayable from its capture. Two runs over the same
   payload produce different ids by construction, because the clock start is an input.
 - **No approval expiry.** Carried from M2, still pinned by the tripwire M3 added.
+
+---
+
+# Second addendum — the ship-check clears
+
+The independent ship-check returned BLOCK on the first submission. Two blockers and four smaller
+findings, all real. What they have in common is worth naming before the individual fixes: **five of
+the six lived at a second entry point, or in a test that named the wrong thing to look for.** None
+of them was a misunderstanding of a rule. Every rule in this repo was already written down
+correctly.
+
+## Blocker 1 — the live approval loop never closed
+
+`executeLive` omitted `decisions: loadDecisions(base)`. A live lead parked, an operator approved it,
+and the next `run --live` parked it again, forever. No live lead could reach handoff.
+
+This is **the M2 replay blocker's exact class**: a second entry point missing a store the first one
+loads. It shipped the same way too — the fixture loop has had a subprocess test walking
+`run → approve → run` since M2, and nothing walked that loop across the live path.
+
+The lesson is not "remember to pass decisions". It is that **a new entry point inherits none of the
+old one's test coverage, and the parts it silently fails to inherit are stores and side effects
+rather than logic.** Three tests now walk the live loop, with `queue` and `approve` as real
+subprocesses.
+
+## Blocker 2 — the signing secret in the shareable capture
+
+Every live run wrote `config.ingest.secret` verbatim into `inputs.json`, the one artifact the README
+tells you to hand to other people "without your credentials". 830 tests passed over it because the
+hygiene test set a canary secret and **only ever grepped for the model key**.
+
+### The decision
+
+The tension is real, which is why this is a decision and not a deletion: replay re-executes ingest,
+and raw mode verifies an HMAC, which needs the secret.
+
+**The capture stores a salted, truncated, non-reversible fingerprint and never the secret. Replay
+resolves the real secret from the environment, exactly as the live run did.** Three outcomes:
+
+| Replay has | What it does | What it may claim |
+|---|---|---|
+| the matching secret | full re-execution | exact byte match, signatures re-verified |
+| a *different* secret | refuses, `SECRET_MISMATCH` | nothing — and it says which problem this is |
+| no secret | chain and seal verification only | not edited, and complete — nothing more |
+
+**The rejected alternative was to re-execute anyway with verification skipped.** It would print
+"exact match" while having checked strictly less than the original run, so the word *match* would
+quietly stop meaning what a reader takes it to mean. A weaker claim stated plainly beats a stronger
+claim that is not quite true — which is the same argument M3 used for `IDENTITY_UNVERIFIED` and M4
+used for self-asserted `as_of`.
+
+The fingerprint earns its place on the middle row. Without it, a replayer holding the wrong secret
+gets a byte divergence reported as *"the inputs or the wiring have changed"*, and goes hunting a code
+change that does not exist.
+
+**Two consequences worth reading as decisions rather than mechanics.** No run id anywhere is a
+function of a credential now, because the id is computed over the same public config the capture
+stores — they have to agree, or a replay could never recompute the id it is checking against. That
+moved every fixture run id, which the golden and README gates absorbed in the same commit. And
+`ingest` now **refuses** in raw mode with no secret instead of skipping verification: raw mode is a
+declaration that signatures matter, so a missing secret is a misconfiguration, never a permission.
+
+**The residual, stated rather than discovered.** The fingerprint is a salted SHA-256 truncated to 64
+bits, not a password KDF, so a *low-entropy* secret is brute-forceable offline from it. Acceptable
+because an HMAC secret shared with a sending system should be high-entropy random; not acceptable to
+leave unsaid.
+
+### What the hygiene test's own failure taught
+
+A hygiene test names the values it hunts for, so **any credential the code learns to hold and the
+list does not name is invisible to it.** The list is now a list, the assertion loops over it, and the
+positive control plants and finds *each* value — because the leak that shipped was precisely a canary
+that was set and never searched for.
+
+## The four smaller clears
+
+- **Scrub bypass in `SOURCE_UNPARSEABLE`.** Both details interpolated untrusted text without the
+  scrubber and uncapped: `JSON.stringify(parsed)` of a 200 body, and `JSON.parse`'s error message,
+  which embeds a body snippet. A source returning a JSON *string* containing a key landed it in the
+  ledger and the dashboard. Routed through the scrubber and capped. The general shape: **the
+  scrubber was applied to messages that obviously came from outside, and missed the ones that came
+  from outside by way of our own string interpolation.**
+- **Silent flag swallowing.** `run --live=true` ran fixture mode and exited 0 — a plausible success
+  nobody chose, which is the failure this repo dislikes most. Unknown and malformed flags now refuse.
+- **Two stale M3-era README passages** claimed there is no model in the drafting path, contradicting
+  the shipped milestone on exactly the question a key-holder needs settled.
+- **SSRF surface of `sourcesFrom: 'signal'`** was unstated. The residual is now named in the README's
+  trust boundaries.

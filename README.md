@@ -27,7 +27,7 @@ machine as on anyone else's.
 <!-- verified-block: run -->
 ```console
 $ node bin/signal-desk.mjs run
-run run-670363eec75d
+run run-44b10b54cba9
 
   1 passed to handoff
   1 awaiting a human
@@ -49,8 +49,8 @@ run run-670363eec75d
   lead-f4a249c336f5      gate      REFUSE       PROMPT_INJECTION
   lead-03ceebb25be4      enrich    REFUSE       NO_CITED_CLAIMS
 
-  ledger    runs/run-670363eec75d/ledger.jsonl
-  handoffs  1 dry run artifact(s) in runs/run-670363eec75d/handoffs
+  ledger    runs/run-44b10b54cba9/ledger.jsonl
+  handoffs  1 dry run artifact(s) in runs/run-44b10b54cba9/handoffs
 
   Nothing was sent. This tool never sends mail.
   Inspect a decision with: node bin/signal-desk.mjs explain <lead>
@@ -89,7 +89,7 @@ stage stood on.
 ```console
 $ node bin/signal-desk.mjs explain lead-29e94419ba7e
 lead lead-29e94419ba7e
-run  run-670363eec75d
+run  run-44b10b54cba9
 
   2026-03-01T09:00:00.000Z  ingest    PASS         system
       evidence  signal:sig-1001
@@ -132,7 +132,7 @@ and the lead parks again as `APPROVAL_STALE`. A refusal reads the same way.
 ```console
 $ node bin/signal-desk.mjs explain sig-9001
 lead sig-9001
-run  run-670363eec75d
+run  run-44b10b54cba9
 
   2026-03-01T09:00:35.000Z  ingest    REFUSE       system
       reasons   MALFORMED_PAYLOAD
@@ -151,10 +151,10 @@ makes the same decisions.
 
 <!-- verified-block: replay -->
 ```console
-$ node bin/signal-desk.mjs replay run-670363eec75d
+$ node bin/signal-desk.mjs replay run-44b10b54cba9
 hash chain verified across 83 entries
 seal verified: 1 passed, 1 parked, 12 refused, 14 in total
-replay of run-670363eec75d is an exact match
+replay of run-44b10b54cba9 is an exact match
 83 entries, identical bytes, chain intact
 ```
 
@@ -176,13 +176,13 @@ id means the latest run.
 <!-- verified-block: dashboard -->
 ```console
 $ node bin/signal-desk.mjs dashboard
-dashboard run-670363eec75d
+dashboard run-44b10b54cba9
 
   83 ledger entries across 14 lead(s)
   1 passed, 1 parked, 12 refused
   12 distinct refusal reason(s), 2 human decision(s)
 
-  runs/run-670363eec75d/dashboard.html
+  runs/run-44b10b54cba9/dashboard.html
 
   Open it in a browser. It is one file, works offline, and fetches nothing.
   It is a read-only view. Decisions are still made with: node bin/signal-desk.mjs approve <id>
@@ -450,11 +450,23 @@ Also never sent: your signal secret, your ledger, and any other lead's data.
 retries, and a size cap. No redirects are followed, because a redirect is a source sending the run
 somewhere it did not choose to cite.
 
-**What is never sent anywhere.** Your keys. They live in one closure, attach to one header, and
-appear in no ledger entry, no refusal detail, no capture and no artifact. A provider's own 401 can
-echo a credential back at you, so every message relayed from outside is scrubbed first.
-`test/key-hygiene.test.mjs` runs a live-shaped flow with a canary key and greps every file the run
-writes, including the dashboard.
+**What is never sent anywhere, and never written down.** Your model key and your signing secret.
+They live in one closure each, and appear in no ledger entry, no refusal detail, no capture and no
+artifact — the run's capture stores a non-reversible fingerprint of the signing secret so a replay
+can tell you if you have the wrong one. A provider's own 401 can echo a credential back at you, so
+every message relayed from outside is scrubbed and capped first. `test/key-hygiene.test.mjs` runs a
+live-shaped flow with a canary for **each** credential and greps every byte the run writes, including
+`dashboard.html` and `inputs.json`, with a planted-value control proving the search works.
+
+**The residual worth knowing about: a payload chooses what this tool fetches.** `sources` and
+`identity_source` come from the signal, which is what keeps vendors out of this repo and makes the
+citation discipline literal — and it means **a compromised or hostile sender can aim fetches at any
+HTTPS endpoint reachable from the machine you run this on, including internal ones.** Four things
+bound it: HTTPS only, no redirects followed, a per-request timeout and byte cap, and the fact that
+nothing fetched can become a stated claim without passing the grounding gate. What is deliberately
+**not** here is a host allowlist. If you run this where internal HTTPS services are reachable, treat
+the signal secret as the control that matters, because it is: it is what decides whose payloads this
+tool will act on at all.
 
 **And nothing is ever sent to your prospect.** Live mode ends where fixture mode ends: at the
 approval queue.
@@ -470,8 +482,24 @@ observed into `runs/<run-id>/inputs.json`:
 $ node bin/signal-desk.mjs replay run-abc123456789
 ```
 
-That needs no key and opens no socket. Hand somebody the run directory and they can re-derive
-every decision in it without your credentials.
+```console
+$ node bin/signal-desk.mjs replay run-abc123456789     # chain + seal, no credentials at all
+$ SIGNAL_DESK_SIGNAL_SECRET=... node bin/signal-desk.mjs replay run-abc123456789   # full re-execution
+```
+
+**What a replay can prove depends on what you share, and it says so rather than blurring it.** No
+model key is ever needed — re-deriving a live run never touches the provider.
+
+| They have | They can verify |
+|---|---|
+| the run directory | the ledger was not edited after it was written, and it is a completed run |
+| ...plus your signing secret | all of that, **and** every payload signature, **and** that re-executing produces these exact bytes |
+
+The capture holds a **fingerprint** of the signing secret, never the secret, so replaying with the
+wrong one is refused by name instead of producing a byte mismatch that reads like a code change.
+Replaying with none still verifies the chain and the seal, and prints exactly which checks it did not
+make. A fixture run needs nothing at all, because its secret is a committed constant rather than a
+credential.
 
 ### When ingest cannot accept something
 

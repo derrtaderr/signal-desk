@@ -148,6 +148,23 @@ export const ingest = {
       return refuse({ reason: 'MALFORMED_PAYLOAD', detail: `signal is malformed: ${problem}` });
     }
 
+    // RAW MODE IS A DECLARATION THAT SIGNATURES ARE VERIFIED, so a missing secret is a
+    // misconfiguration rather than a permission to skip. The general rule below — no secret means no
+    // verification — is right for a pipeline nobody gave a secret to, and is never right here.
+    // Defence in depth for the M4 decision that the capture stores no secret: if a replay ever
+    // reached execution without one, it must refuse rather than quietly verify less than the run it
+    // claims to reproduce.
+    if (!isNonEmptyString(config.secret) && (config.signatureOver ?? 'canonical') === 'raw') {
+      return refuse({
+        reason: 'SIGNATURE_MISSING',
+        evidence_refs: [`signal:${signal.id}`],
+        detail:
+          'ingest is configured to verify signatures over raw bytes and no secret is available, so ' +
+          'nothing can be verified. Raw mode is a statement that signatures matter; proceeding ' +
+          'without the secret would check strictly less than the configuration asks for',
+      });
+    }
+
     if (isNonEmptyString(config.secret)) {
       if ((config.signatureOver ?? 'canonical') === 'raw') {
         const problem = verifyRawBytes(signal, config.secret);
