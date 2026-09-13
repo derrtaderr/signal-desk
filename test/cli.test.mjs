@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -254,5 +254,50 @@ test('replay reports the sealed summary, so the run outcome is readable from the
     const output = cli(['replay', runId], { cwd: dir });
     assert.match(output, /seal verified/i);
     assert.match(output, /refused/i);
+  });
+});
+
+// --- exports cannot clobber -----------------------------------------------------------
+
+test('a handoff artifact is named per lead AND per draft', () => {
+  withTempRuns((dir) => {
+    const output = cli(['run'], { cwd: dir });
+    const runId = output.match(/run-[0-9a-f]{12}/)[0];
+    const files = readdirSync(join(dir, 'runs', runId, 'handoffs'));
+    assert.equal(files.length, 1);
+    assert.match(files[0], /^lead-[0-9a-f]{12}-draft-[0-9a-f]{16}\.json$/);
+  });
+});
+
+test('re-running into the same directory rewrites identical bytes rather than refusing', () => {
+  // The filename is content-addressed, so an identical re-run is idempotent, not a collision.
+  withTempRuns((dir) => {
+    const output = cli(['run'], { cwd: dir });
+    const runId = output.match(/run-[0-9a-f]{12}/)[0];
+    const path = join(dir, 'runs', runId, 'handoffs', readdirSync(join(dir, 'runs', runId, 'handoffs'))[0]);
+    const before = readFileSync(path, 'utf8');
+    cli(['run'], { cwd: dir });
+    assert.equal(readFileSync(path, 'utf8'), before);
+  });
+});
+
+test('an export refuses to overwrite a DIFFERENT artifact at the same path', () => {
+  // Proven through the real CLI process, since this is a guard on a filesystem write and a
+  // unit test of the helper alone would not show that the run path uses it.
+  withTempRuns((dir) => {
+    const output = cli(['run'], { cwd: dir });
+    const runId = output.match(/run-[0-9a-f]{12}/)[0];
+    const handoffDir = join(dir, 'runs', runId, 'handoffs');
+    const path = join(handoffDir, readdirSync(handoffDir)[0]);
+
+    // Something else got there first, under the same name, with different content.
+    writeFileSync(path, '{"someone":"else wrote this"}\n');
+
+    assert.throws(() => cli(['run'], { cwd: dir }), /refusing to overwrite/i);
+    assert.equal(
+      readFileSync(path, 'utf8'),
+      '{"someone":"else wrote this"}\n',
+      'and the artifact that was already there is untouched',
+    );
   });
 });
