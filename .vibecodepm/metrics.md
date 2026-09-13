@@ -1,13 +1,13 @@
 ---
 name: signal-desk metrics
 read_by: vibecodepm:ship-check before any signal-desk release, and any session changing the CLI's first-run output
-milestone: M3
-status: current — matches the build at lane/signal-desk-m3
+milestone: M4
+status: current — matches the build at lane/signal-desk-m4
 date: 2026-09-13
-supersedes: the M2 metrics, whose instrumentation table this extends rather than replaces
+supersedes: the M3 metrics, whose instrumentation table this extends rather than replaces
 ---
 
-# Metrics — signal-desk M3
+# Metrics — signal-desk M4
 
 **Status field, added in M2.** The M1 review noted that this file and `flow.md` carried no way
 to tell a current document from a stale one. Both now declare `status` and `supersedes`.
@@ -17,7 +17,13 @@ to tell a current document from a stale one. Both now declare `status` and `supe
 **A stranger runs `signal-desk run` in a fresh clone and sees a completed fixture run with
 its per-lead verdicts.**
 
-Unchanged from M1, and deliberately so. That is the moment the repo stops being a claim and
+**Unchanged in M4, and this is the decision worth defending.** Live mode is the milestone's whole
+subject and it did NOT become the activation event, because activation is about the first two
+minutes and live mode cannot be reached in two minutes by anyone who has to find a key first. A
+build that moved its activation event to the path requiring setup would be measuring the wrong
+moment and would quietly stop caring about the one that actually converts a reader.
+
+The live path gets its own number below instead. Unchanged from M1, and deliberately so. That is the moment the repo stops being a claim and
 becomes a thing that did something. It is one command after clone, with no install, no key and
 no config.
 
@@ -103,6 +109,29 @@ A failure in any of those rows is a safeguard failure caught before release rath
 support conversation afterwards. Distribute, do not host, which means the check has to run in
 CI rather than in production.
 
+### New in M4: the live path is measured by what it REFUSES to do without setup
+
+Live mode's instrumentation is unusual because the outcomes worth counting are mostly refusals, and
+they are refusals of the OPERATOR's configuration rather than of a lead.
+
+| What has to stay true | How it is observable | Where |
+|---|---|---|
+| **The keyless suite stays keyless** | 830 tests pass with no key, no network, no node_modules | `npm test` in a fresh clone |
+| **No test can open a socket** | statically: no test imports the one module that can, none names a real provider host | `test/no-network.test.mjs` |
+| **A key cannot reach any artifact** | a canary key run through a live-shaped flow appears in no written file and no printed line, including `dashboard.html`, with a planted-value control proving the grep works | `test/key-hygiene.test.mjs` |
+| **`--live` without a key costs nothing** | exit 2, `LIVE_KEY_MISSING`, and the runs directory is still empty | `test/live-cli.test.mjs` |
+| **`--live` never accepts an unsigned payload** | exit 2, `LIVE_SECRET_MISSING`, rather than skipping verification | `test/live-cli.test.mjs` |
+| **A model failure never becomes a template** | every failure direction refuses with its own code and writes no draft | `test/stage-draft.test.mjs` |
+| **A live judge is no weaker than a recorded one** | M2's fail-closed rules are driven through the live path against the shared validator | `test/rubric.test.mjs` |
+| **A live run replays from its own capture** | a real subprocess replays it to identical bytes with no key exported, with the timing forced so the check is deterministic | `test/live-cli.test.mjs` |
+| **The DLQ recovers rather than accumulates** | a dead letter keeps its exact bytes and `dlq --replay` re-feeds the same message | `test/live-cli.test.mjs` |
+| **No fixture domain is contacted in live mode** | the fetched URL list is asserted against the payload's own citations | `test/live-cli.test.mjs` |
+
+**That last row exists because it caught something.** `liveConfig` inherited the fixture identity
+source and would have tried to resolve a reserved test domain on every live lead, then reported
+IDENTITY_UNVERIFIED as though a real source had declined to answer. A composition-level assertion
+found it; no unit test would have.
+
 ## The number that matters after activation
 
 **Refusals per run that a reader can trace to a named rule.**
@@ -120,6 +149,24 @@ catching a bad sentence after writing one.
 
 Measured by the golden ledger, which pins the exact set of refusals. A change that quietly
 relaxes a rule shows up as a diff on that file rather than as silence.
+
+### The fourth number, new in M4
+
+**Artifacts a live run produces that somebody else can verify without your credentials.**
+
+All of them. The ledger, the capture, the parked drafts, the handoff artifacts and the dashboard are
+written into one run directory, and `replay` re-derives every decision from that directory with no
+key and no socket. The number to watch is not a count, it is a property: **zero artifacts require a
+credential to interpret.**
+
+This is the metric because it is what makes live mode's claim checkable by a reader rather than
+taken on trust. A live run nobody else can re-derive is a screenshot.
+
+The honest limit, stated because the word "replay" can carry more than it should: a fixture run is
+REPRODUCIBLE (every input is in the repo, forever, on any machine) and a live run is REPLAYABLE FROM
+ITS CAPTURE (it read a real clock and real strangers' servers, and what it can prove is that these
+decisions follow from these observations). The second is weaker. It is also the strongest thing that
+is true.
 
 ### The third number, new in M3
 
@@ -174,3 +221,15 @@ tool is arbitrary.
 surface has acquired a second source of truth and the ledger has stopped being the artifact. The
 fix is to delete the view, or to make the stage record what the view needed. It is never to let
 the renderer work it out.
+
+**Added in M4:** if the keyless suite ever needs a key, or a key ever appears in a run artifact,
+live mode has failed at the only thing that made it safe to ship in an open repo. The fix is the
+seam and the scrubber, never a smaller test suite and never a note in the README asking people to
+be careful. Both failures are caught by a test rather than by a reviewer, which is the point:
+`test/no-network.test.mjs` and `test/key-hygiene.test.mjs` fail in the same commit as the mistake.
+
+And a second one, narrower and easy to rationalise away: **if a model failure ever produces a
+draft, the milestone is broken regardless of how green the suite is.** A fallback to a template on
+an outage would be the most defensible-sounding bug available here — it keeps the pipeline moving,
+it produces something plausible, and it would put a message nobody chose on a path the operator
+believes is running a model, with the ledger recording PASS.

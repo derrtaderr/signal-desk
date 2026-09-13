@@ -129,7 +129,7 @@ test('the README run id matches the one the pipeline actually produces', async (
 
 test('every CLI verb the README shows actually exists', async () => {
   const { USAGE } = await import('../src/cli.mjs');
-  for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay', 'dashboard']) {
+  for (const verb of ['run', 'run --live', 'queue', 'approve', 'reject', 'explain', 'replay', 'dashboard', 'dlq']) {
     assert.ok(USAGE.includes(verb), `usage documents ${verb}`);
     assert.ok(README.includes(`bin/signal-desk.mjs ${verb}`), `README shows ${verb}`);
   }
@@ -144,7 +144,7 @@ test('every verb the CLI dispatches is one the README shows', async () => {
   // tripped the clobber guard. A test must not leave anything behind in the checkout.
   const dir = mkdtempSync(join(tmpdir(), 'signal-desk-verbs-'));
   try {
-    for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay', 'dashboard']) {
+    for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay', 'dashboard', 'dlq']) {
       const lines = [];
       await main({
         argv: [verb],
@@ -164,9 +164,11 @@ test('every verb the CLI dispatches is one the README shows', async () => {
 });
 
 test('the README does not advertise a verb this milestone has not built', () => {
-  // approve and reject moved OUT of this list in M2 and dashboard moved out in M3, each in the
-  // commit that built it. --live is M4 and stays here until it exists.
-  for (const verb of ['--live']) {
+  // approve and reject moved OUT of this list in M2, dashboard in M3, and `run --live` and `dlq`
+  // in M4, each in the commit that built it. The list is empty because this milestone is the last
+  // one the design names, so the README now advertises nothing unbuilt. `send` is covered by the
+  // test below and never leaves it, because sending is non-scope in every milestone.
+  for (const verb of []) {
     assert.ok(
       !README.includes(`bin/signal-desk.mjs ${verb}`),
       `README does not show the unbuilt verb ${verb} as runnable`,
