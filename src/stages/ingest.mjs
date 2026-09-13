@@ -96,23 +96,19 @@ export const ingest = {
       });
     }
 
-    // The ledger is the idempotency store. A signal already carrying a passing ingest entry
-    // has been accepted once, and accepting it again would double the motion.
+    // The ledger is the idempotency store, and it is consulted at two levels because two
+    // different things can arrive twice. See docs/M2-SPEC.md, "the identity model".
     //
-    // The lookup keys on the evidence ref rather than on the entry's lead_id, because a
-    // passing ingest entry files under the CANONICAL lead id it just assigned, not under
-    // the signal id. The evidence ref is what names the signal, and idempotency is a
-    // property of the signal.
+    // Level one, the signal. A replayed webhook: the same signal id seen again. The lookup
+    // keys on the evidence ref rather than on the entry's lead_id, because a passing ingest
+    // entry files under the CANONICAL lead id it just assigned, not under the signal id.
     const marker = `signal:${signal.id}`;
-    const alreadyAccepted = ctx.ledger
-      .entries()
-      .some(
-        (entry) =>
-          entry.stage === 'ingest' &&
-          entry.verdict === 'PASS' &&
-          entry.evidence_refs.includes(marker),
-      );
-    if (alreadyAccepted) {
+    const entries = ctx.ledger.entries();
+    const acceptedIngests = entries.filter(
+      (entry) => entry.stage === 'ingest' && entry.verdict === 'PASS',
+    );
+
+    if (acceptedIngests.some((entry) => entry.evidence_refs.includes(marker))) {
       return refuse({
         reason: 'DUPLICATE_SIGNAL',
         evidence_refs: [marker],
@@ -120,12 +116,32 @@ export const ingest = {
       });
     }
 
+    // Level two, the lead. A DIFFERENT signal about a person already in flight this run.
+    //
+    // This is not a redundant check. The HMAC covers `payload` and nothing else, so re-issuing
+    // a signal under a fresh id leaves the signature valid and steps straight past level one.
+    // M1 had only level one, and a second signal for one contact therefore ran the whole
+    // pipeline again, consumed the same human approval a second time, and wrote its handoff
+    // artifact over the first. One person, one motion: a second signal about someone already
+    // accepted is corroborating evidence, never a second reason to write to them.
     const domain = signal.payload.company.domain.trim().toLowerCase();
     const email = signal.payload.contact.email.trim().toLowerCase();
+    const leadId = leadIdFor(domain, email);
+
+    const priorAcceptance = acceptedIngests.find((entry) => entry.lead_id === leadId);
+    if (priorAcceptance !== undefined) {
+      return refuse({
+        reason: 'DUPLICATE_LEAD',
+        evidence_refs: [marker, `lead:${leadId}`],
+        detail:
+          `signal ${signal.id} resolves to ${leadId}, which has already been accepted this ` +
+          `run from ${priorAcceptance.evidence_refs.find((ref) => ref.startsWith('signal:')) ?? 'an earlier signal'}`,
+      });
+    }
 
     return pass({
       output: {
-        lead_id: leadIdFor(domain, email),
+        lead_id: leadId,
         signal_id: signal.id,
         source: signal.source,
         received_at: signal.received_at,
