@@ -230,7 +230,10 @@ export const gate = {
 
     let judgment;
     try {
-      judgment = await evaluateRubric(draftHash, ctx, config.rubric);
+      judgment = await evaluateRubric(draftHash, ctx, config.rubric, {
+        draft: lead.draft,
+        claims: lead.claims,
+      });
     } catch (error) {
       return refuse({
         reason: 'GATE_ERROR',
