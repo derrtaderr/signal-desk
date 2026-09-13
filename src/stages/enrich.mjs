@@ -157,7 +157,14 @@ const IDENTITY_FIELDS = [
 ];
 
 async function verifyIdentity(lead, ctx) {
-  const template = ctx.config.enrich?.identitySource;
+  // In signal mode the person-level source is named by the payload, exactly as the claim sources
+  // are, and for the same reasons: no vendor in the repo, no provider account needed, and the
+  // evidence a run stands on is the evidence the payload pointed at. A signal that names none gets
+  // no identity check, which is the state every lead was in before M3 and is reported as such.
+  const template =
+    (ctx.config.enrich?.sourcesFrom ?? 'config') === 'signal'
+      ? lead.identity_source
+      : ctx.config.enrich?.identitySource;
   if (typeof template !== 'string' || template === '') return { entries: [] };
 
   const url = expand(template, lead);
