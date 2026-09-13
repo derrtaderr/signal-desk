@@ -70,6 +70,7 @@ test('the golden ledger pins the exact refusals, so a silently relaxed rule is c
     'enrich:EVIDENCE_DECAYED',
     'enrich:IDENTITY_CONTRADICTED',
     'gate:PII_IN_BODY',
+    'gate:PROMPT_INJECTION',
     'gate:RUBRIC_FAILED',
     'gate:UNGROUNDED_PROSE_CLAIM',
     'ingest:DUPLICATE_LEAD',
@@ -81,14 +82,19 @@ test('the golden ledger pins the exact refusals, so a silently relaxed rule is c
   ]);
 });
 
-test('the golden run exercises all three parts of the gate, each with its own refusal', () => {
+test('the golden run exercises every part of the gate, each with its own refusal', () => {
   // The demo has to SHOW the gate working, not just contain a gate. One hostile fixture per
-  // part, each refused for its own named reason.
+  // part, each refused for its own named reason. M3 adds the fourth part, prompt injection.
   const gateRefusals = goldenEntries
     .filter((e) => e.stage === 'gate' && e.verdict === 'REFUSE')
     .map((e) => e.reason_codes[0])
     .sort();
-  assert.deepEqual(gateRefusals, ['PII_IN_BODY', 'RUBRIC_FAILED', 'UNGROUNDED_PROSE_CLAIM']);
+  assert.deepEqual(gateRefusals, [
+    'PII_IN_BODY',
+    'PROMPT_INJECTION',
+    'RUBRIC_FAILED',
+    'UNGROUNDED_PROSE_CLAIM',
+  ]);
 });
 
 test('the golden run distinguishes a replayed signal from a second signal for one lead', () => {
