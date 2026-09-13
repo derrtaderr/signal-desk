@@ -134,8 +134,12 @@ function collect() {
 
 async function liveRun({ signalsDir, runsDir, transport, env = {}, argv = ['run', '--live'] }) {
   const log = collect();
+  // --signals belongs to `run` only. `dlq --replay` re-feeds retained bytes rather than reading a
+  // directory, and the CLI now refuses a flag a verb does not accept — which caught this harness
+  // passing one through, correctly.
+  const takesSignals = argv[0] === 'run';
   const code = await main({
-    argv: [...argv, '--signals', signalsDir],
+    argv: takesSignals ? [...argv, '--signals', signalsDir] : [...argv],
     out: log.write.out,
     err: log.write.err,
     env: {
@@ -531,4 +535,80 @@ test('a FIXTURE approval still points at plain run, so the hint is mode-aware an
 
   assert.match(approved, /signal-desk\.mjs run$/m);
   assert.ok(!approved.includes('run --live'));
+});
+
+// --- unknown flags refuse ---------------------------------------------------------------------
+//
+// The advocate's highest finding, and it is the failure shape this repo dislikes most: `run
+// --live=true` ran the FIXTURE corpus and exited 0. A plausible success nobody chose. The operator
+// believes they ran against their own signals with their own key; what they got was the demo, with a
+// zero exit code and output that looks exactly like a working run.
+//
+// A mode is never inferred from a flag the CLI does not recognise.
+
+test('run --live=true REFUSES rather than silently running fixture mode', () => {
+  const runs = tmp('flag-equals');
+  let status = 0;
+  let stderr = '';
+  try {
+    execFileSync(process.execPath, [BIN, 'run', '--live=true'], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+    });
+  } catch (error) {
+    status = error.status;
+    stderr = error.stderr;
+  }
+  assert.notEqual(status, 0, 'a flag the CLI does not understand is not a successful run');
+  assert.match(stderr, /--live=true/, 'and it says which flag it did not understand');
+  assert.match(stderr, /--live/, 'and points at the one it does');
+});
+
+test('a misspelled or unknown flag on any verb REFUSES', () => {
+  const runs = tmp('flag-unknown');
+  for (const argv of [['run', '--liv'], ['run', '--dry-run'], ['queue', '--all'], ['dlq', '--replayy']]) {
+    let status = 0;
+    let stderr = '';
+    try {
+      execFileSync(process.execPath, [BIN, ...argv], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+      });
+    } catch (error) {
+      status = error.status;
+      stderr = error.stderr;
+    }
+    assert.notEqual(status, 0, `${argv.join(' ')} should refuse`);
+    assert.match(stderr, /unknown|unrecognis/i, `${argv.join(' ')} should say so`);
+  }
+});
+
+test('every flag the CLI genuinely accepts still works', () => {
+  // The other direction, so the refusal above cannot be satisfied by refusing everything.
+  const runs = tmp('flag-good');
+  const stdout = execFileSync(process.execPath, [BIN, 'run'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+  assert.match(stdout, /14 signals in total/);
+
+  const queued = execFileSync(process.execPath, [BIN, 'queue'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+  const hash = /\b(draft-[0-9a-f]+)\b/.exec(queued)[1];
+
+  // --note and --by on a decision, --replay on dlq, --signals on a live run.
+  const rejected = execFileSync(process.execPath, [BIN, 'reject', hash, '--note', 'not now', '--by', 'jason'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+  assert.match(rejected, /rejected/);
+  assert.match(rejected, /jason/);
+
+  const dlq = execFileSync(process.execPath, [BIN, 'dlq', '--replay'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+  assert.match(dlq, /nothing is dead-lettered/);
 });

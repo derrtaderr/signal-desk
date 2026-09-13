@@ -96,20 +96,46 @@ async function readCapped(response, maxBytes) {
   return text;
 }
 
-function parseJsonObject(text, url) {
+// The longest fragment of a source's own content that may appear in a refusal detail.
+//
+// A detail travels into the ledger, the golden file and the dashboard, so one hostile source must not
+// be able to flood any of them. The same reasoning as the injection detector's MAX_SPAN, applied to
+// the other place untrusted bytes reach the durable record.
+const MAX_DETAIL = 200;
+
+// EVERY PIECE OF SOURCE-CONTROLLED TEXT LEAVES THROUGH HERE, scrubbed and capped.
+//
+// The bug this closes, found by the M4 ship-check: both SOURCE_UNPARSEABLE details interpolated
+// untrusted text through OUR OWN string building rather than relaying an upstream message, so neither
+// passed the scrubber. `JSON.stringify(parsed)` of a 200 body, and `JSON.parse`'s error message —
+// which embeds a snippet of the input — both reached the ledger and from there the dashboard verbatim
+// and uncapped. A source answering 200 with a bare JSON string is the cleanest way to land arbitrary
+// text in a refusal detail, and the reviewer landed a credential that way.
+//
+// THE GENERAL SHAPE IS THE LESSON. The scrubber was applied to messages that obviously came from
+// outside, and missed the ones that came from outside by way of a template literal of ours. "Did this
+// text originate with a stranger" is the question, not "did another system hand me this string".
+function fragment(value, scrub) {
+  const text = scrub(typeof value === 'string' ? value : JSON.stringify(value) ?? String(value));
+  const compact = String(text).replace(/\s+/g, ' ').trim();
+  return compact.length <= MAX_DETAIL ? compact : `${compact.slice(0, MAX_DETAIL - 1)}…`;
+}
+
+function parseJsonObject(text, url, scrub) {
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch (error) {
     throw new LiveTransportError(
       'SOURCE_UNPARSEABLE',
-      `${url} answered 200 with a body that is not JSON, so it has not answered the question: ${error.message}`,
+      `${url} answered 200 with a body that is not JSON, so it has not answered the question: ` +
+        `${fragment(error.message, scrub)}`,
     );
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new LiveTransportError(
       'SOURCE_UNPARSEABLE',
-      `${url} answered 200 with ${JSON.stringify(parsed)}, which is not a claim record`,
+      `${url} answered 200 with ${fragment(parsed, scrub)}, which is not a claim record`,
     );
   }
   return parsed;
@@ -227,7 +253,7 @@ export function createLiveFetcher({
       // content. These throw rather than setting lastFailure, so nothing is retried into a
       // guaranteed repeat.
       const text = await readCapped(response, maxBytes);
-      return { status: 200, body: parseJsonObject(text, url), fetched_at };
+      return { status: 200, body: parseJsonObject(text, url, scrub), fetched_at };
     }
 
     throw lastFailure;

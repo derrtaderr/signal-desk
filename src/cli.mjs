@@ -414,6 +414,15 @@ async function verbDlq(context) {
     }
     out(`replaying ${letters.length} dead letter(s)`);
     out('');
+    // WHY THIS NEEDS BOTH CREDENTIALS, recorded because it looks like over-strictness and is not.
+    // A re-fed payload that clears ingest runs the whole pipeline, which drafts with the model. Asking
+    // for the key only once a signal reached the draft stage would mean starting a run that dies
+    // halfway, after fetching strangers' URLs, with some leads processed and some not. The signing
+    // secret is needed even for a payload that will be refused again, because refusing it for an
+    // invalid signature IS the verification. Both up front, or a partial run nobody asked for.
+    out('  Both credentials are required: a re-fed payload that clears ingest drafts with the model,');
+    out('  and verifying a signature is what deciding to refuse one again consists of.');
+    out('');
     return executeLive({
       signals,
       dead,
@@ -848,6 +857,59 @@ async function verbDashboard({ args, out, err, env, cwd }) {
   return 0;
 }
 
+// --- flag discipline -------------------------------------------------------------------
+//
+// A MODE IS NEVER INFERRED FROM A FLAG THE CLI DOES NOT RECOGNISE.
+//
+// `run --live=true` used to run the FIXTURE corpus and exit 0, which is the failure shape this repo
+// dislikes most: a plausible success nobody chose. The operator believes they ran against their own
+// signals with their own key; they got the demo, with a zero exit code and output that looks exactly
+// like a working run. Nothing downstream could tell them otherwise, because nothing downstream was
+// wrong.
+//
+// So the accepted flags are declared per verb and anything else refuses. Declared as data rather than
+// checked inline, because the failure being designed out is somebody adding a flag in one place and
+// forgetting the other.
+
+const ACCEPTED_FLAGS = Object.freeze({
+  run: ['--live', '--signals'],
+  queue: [],
+  approve: ['--by', '--note'],
+  reject: ['--by', '--note'],
+  explain: [],
+  replay: [],
+  dashboard: [],
+  dlq: ['--replay'],
+});
+
+// Flags that take a value, so the value is not mistaken for a flag or for a positional argument.
+const FLAGS_WITH_VALUES = Object.freeze(['--signals', '--by', '--note']);
+
+function unknownFlag(verb, args) {
+  const accepted = ACCEPTED_FLAGS[verb];
+  if (accepted === undefined) return null;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (typeof arg !== 'string' || !arg.startsWith('--')) continue;
+
+    // `--flag=value` is refused even when `--flag` is accepted, rather than being parsed. Supporting
+    // one spelling and silently ignoring the other is how `--live=true` became a fixture run; a CLI
+    // this small is better off accepting exactly one form and saying so.
+    if (arg.includes('=')) {
+      const [name] = arg.split('=');
+      return accepted.includes(name)
+        ? `${arg} is not a form this CLI accepts. Write it as: ${name}${FLAGS_WITH_VALUES.includes(name) ? ' <value>' : ''}`
+        : `unknown flag ${arg}`;
+    }
+
+    if (!accepted.includes(arg)) return `unknown flag ${arg}`;
+    if (FLAGS_WITH_VALUES.includes(arg)) index += 1;
+  }
+
+  return null;
+}
+
 // --- dispatch --------------------------------------------------------------------------
 
 export async function main({
@@ -867,6 +929,20 @@ export async function main({
 } = {}) {
   const [verb, ...args] = argv;
   const context = { args, out, err, env, cwd, now, httpTransport };
+
+  // Before anything runs, and before a mode is chosen. An unrecognised flag is refused rather than
+  // ignored, so no invocation can quietly become a different one than the operator typed.
+  const flagProblem = unknownFlag(verb, args);
+  if (flagProblem !== null) {
+    err(flagProblem);
+    const accepted = ACCEPTED_FLAGS[verb];
+    err(
+      accepted.length === 0
+        ? `${verb} takes no flags.`
+        : `${verb} accepts: ${accepted.join(', ')}`,
+    );
+    return 2;
+  }
 
   switch (verb) {
     case 'run':
