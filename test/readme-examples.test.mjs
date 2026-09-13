@@ -126,13 +126,27 @@ test('every verb the CLI dispatches is one the README shows', async () => {
   // The other direction. A verb that works but is documented nowhere is as much a gap as a
   // verb the README promises and the CLI does not have.
   const { main } = await import('../src/cli.mjs');
-  for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay']) {
-    const lines = [];
-    await main({ argv: [verb], out: () => {}, err: (line) => lines.push(line), cwd: ROOT, env: {} });
-    assert.ok(
-      !lines.some((line) => line.includes(`unknown verb: ${verb}`)),
-      `${verb} is dispatched by the CLI, not just documented`,
-    );
+  // A temp runs directory, because `run` genuinely runs. Pointing it at the repo let this test
+  // write artifacts into the working tree, where a stale export from an earlier commit then
+  // tripped the clobber guard. A test must not leave anything behind in the checkout.
+  const dir = mkdtempSync(join(tmpdir(), 'signal-desk-verbs-'));
+  try {
+    for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay']) {
+      const lines = [];
+      await main({
+        argv: [verb],
+        out: () => {},
+        err: (line) => lines.push(line),
+        cwd: dir,
+        env: { SIGNAL_DESK_RUNS_DIR: join(dir, 'runs') },
+      });
+      assert.ok(
+        !lines.some((line) => line.includes(`unknown verb: ${verb}`)),
+        `${verb} is dispatched by the CLI, not just documented`,
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

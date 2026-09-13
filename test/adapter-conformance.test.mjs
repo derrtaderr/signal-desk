@@ -113,6 +113,26 @@ for (const [key, adapter] of Object.entries(adapters)) {
     assert.equal(adapter.render(lead(), ctx()).approved_by, 'dana.reviewer');
   });
 
+  test(`${key}: the SERIALISED BYTES carry the claim citations, not just the object`, () => {
+    // Asserted on the bytes, because that is what ships. The pre-serialisation object had the
+    // citations all along; the JSON writer was stripping every nested object, so every export
+    // read "claim_refs": [{}] and the evidence behind each claim was gone from the artifact.
+    // An assertion on adapter.render() alone passed happily through that.
+    const text = adapter.serialize(adapter.render(lead(), ctx()));
+    assert.match(text, /employee_count/, 'the claim field survives serialisation');
+    assert.match(text, /directory\.test/, 'and the citation that grounds it');
+    assert.doesNotMatch(text, /\{\s*\}/, 'no object was flattened to an empty one');
+  });
+
+  test(`${key}: serialised bytes round-trip to the same structure that was rendered`, () => {
+    // The general form of the bug above: whatever the writer does to key order or formatting,
+    // it must not LOSE anything.
+    const artifact = adapter.render(lead(), ctx());
+    const text = adapter.serialize(artifact);
+    if (adapter.extension !== 'json') return;
+    assert.deepEqual(JSON.parse(text), artifact);
+  });
+
   test(`${key}: carries the message a reader would receive`, () => {
     const text = adapter.serialize(adapter.render(lead(), ctx()));
     assert.match(text, /Open to a short call\?/);
