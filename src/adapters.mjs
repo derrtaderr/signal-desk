@@ -23,8 +23,23 @@
 
 // Sorted, because an artifact that serialises differently depending on object construction
 // order is an artifact that cannot be compared between runs.
+//
+// Sorting is done by REBUILDING the value with ordered keys, not by handing JSON.stringify a
+// replacer array. A replacer array is an allowlist of key names applied at EVERY nesting depth,
+// so passing the top level's keys silently stripped every nested object: each claim_refs entry
+// serialised as {} and the citation grounding each claim vanished from the export. The bug was
+// invisible to any assertion made on the rendered object, because the object was always right.
+function sortedDeep(value) {
+  if (Array.isArray(value)) return value.map(sortedDeep);
+  if (value === null || typeof value !== 'object') return value;
+
+  const ordered = {};
+  for (const key of Object.keys(value).sort()) ordered[key] = sortedDeep(value[key]);
+  return ordered;
+}
+
 function stableJson(value) {
-  return JSON.stringify(value, Object.keys(value).sort(), 2);
+  return JSON.stringify(sortedDeep(value), null, 2);
 }
 
 // The fields every adapter puts in its artifact, whatever format it renders to. Named once so
@@ -76,6 +91,14 @@ export const adapters = {
           'X-Signal-Desk-Lead': facts.lead_id,
           'X-Signal-Desk-Draft': facts.draft_hash,
           'X-Signal-Desk-Approved-By': facts.approved_by,
+          // The evidence travels WITH the artifact. Headers rather than body, because the body
+          // is the message a person reads and citations are not part of it. An export that
+          // dropped its grounding would make the artifact unauditable on its own, which is the
+          // same loss the JSON writer was causing silently.
+          'X-Signal-Desk-Claim': facts.claim_refs
+            .map((ref) => `${ref.field}=${ref.citation}`)
+            .join('; '),
+          'X-Signal-Desk-Citations': facts.citations.join('; '),
           'X-Signal-Desk-Dry-Run': 'true',
         },
       };
