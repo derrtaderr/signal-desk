@@ -16,6 +16,7 @@
 // Telling them how many people they employ is, and it needs a source fetched this run.
 
 import { pass, refuse } from '../contract.mjs';
+import { computeDraftHash } from '../draft-hash.mjs';
 
 const PLACEHOLDER = /\{([a-z0-9_]+(?::[a-z0-9_]+)?)\}/g;
 
@@ -104,8 +105,14 @@ export const draft = {
       .map(([field, citation]) => ({ field, citation }))
       .sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
 
+    const composed = { to: lead.contact.email, subject, body, template: play, claim_refs };
+
+    // The hash sits BESIDE the draft rather than inside it, so it is never part of its own
+    // preimage. It is what the human approval downstream binds to, and what gate, queue and
+    // handoff each recompute and compare, so a draft that changed between stages is a draft
+    // nobody approved.
     return pass({
-      output: { ...lead, draft: { to: lead.contact.email, subject, body, template: play, claim_refs } },
+      output: { ...lead, draft: composed, draft_hash: computeDraftHash(composed) },
       evidence_refs: [...new Set(claim_refs.map((c) => c.citation))].sort(),
     });
   },
