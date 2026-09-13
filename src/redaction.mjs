@@ -21,6 +21,30 @@
 // much a leak. Ten digits with no separators is not a phone number by the redacting pattern
 // and is very much a phone number.
 
+// CHARACTER-SET BOUNDARY, stated because it is real and was measured rather than assumed.
+//
+// Every pattern below is built from ASCII character classes. Text that reads as an address or
+// a number to a human but is not ASCII slips past both passes, silently, which is the worst
+// failure shape this module has.
+//
+// COMPATIBILITY FORMS ARE CLOSED. Both passes normalise with NFKC before matching, so a
+// fullwidth ＠ folds to @ and fullwidth digits fold to ASCII. Measured before the fix: both
+// sailed through redaction AND verification.
+//
+// HOMOGLYPHS ARE NOT CLOSED, and the gap is narrow. NFKC does not fold Cyrillic а onto Latin a,
+// because they are genuinely different characters rather than compatibility variants. In
+// practice a homoglyph in the middle of a local part changes nothing, since the ASCII run
+// either side still matches; only a non-ASCII character sitting directly against the @ breaks
+// the pattern. Closing that needs a Unicode confusables table, which is different work from
+// normalisation and is deliberately not in this milestone. A test pins the boundary so it
+// cannot drift unnoticed, and docs/M2-SPEC.md records it as a deferral.
+
+// Normalising for DETECTION only. The draft itself is never rewritten; the gate refuses it and
+// passes the original text through untouched.
+function normalise(text) {
+  return text.normalize('NFKC');
+}
+
 // --- the redacting detectors ----------------------------------------------------------
 
 const EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
@@ -71,10 +95,12 @@ export function redact(text, { allow = [] } = {}) {
   if (typeof text !== 'string') {
     throw new TypeError('redact requires the text to redact');
   }
-  const allowed = new Set(allow.map((address) => String(address).toLowerCase()));
+  const allowed = new Set(
+    allow.map((address) => normalise(String(address)).toLowerCase()),
+  );
   const hits = [];
 
-  let redacted = text.replace(EMAIL, (match) => {
+  let redacted = normalise(text).replace(EMAIL, (match) => {
     if (allowed.has(match.toLowerCase())) return RECIPIENT_PLACEHOLDER;
     hits.push({ type: 'email', value: match });
     return EMAIL_PLACEHOLDER;
@@ -97,7 +123,7 @@ export function assertClean(text) {
   if (typeof text !== 'string') {
     throw new TypeError('assertClean requires the text to verify');
   }
-  const subject = stripPlaceholders(text);
+  const subject = stripPlaceholders(normalise(text));
   const found = [];
 
   for (const match of subject.matchAll(RESIDUAL_EMAIL)) {
