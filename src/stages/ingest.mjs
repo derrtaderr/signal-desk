@@ -47,9 +47,15 @@ export function signRaw(secret, raw) {
   return createHmac('sha256', secret).update(raw, 'utf8').digest('hex');
 }
 
-// The fields a live loader attaches beside the parse. They are verification material, not part of
-// the lead, and they are stripped before anything downstream sees the signal.
-const TRANSPORT_FIELDS = ['raw', 'signature'];
+// The fields a live loader attaches beside the parse: the bytes, the out-of-band signature, and
+// which file they came from. They are TRANSPORT material rather than anything the sender signed, so
+// they are excluded from the bytes-versus-parse comparison and stripped before the lead travels.
+//
+// Getting this list wrong fails CLOSED, which is worth noting because it is the good direction. A
+// field left off is a field the comparison sees on one side only, so every correctly signed signal
+// refuses as SIGNATURE_INVALID — loud, immediate, and caught by the first live run rather than by
+// a quiet acceptance of something unverified.
+const TRANSPORT_FIELDS = ['raw', 'signature', 'source_file'];
 
 function verifyRawBytes(signal, secret) {
   const { raw } = signal;
@@ -236,6 +242,11 @@ export const ingest = {
         // fetched read as a citation, which is the one thing the enrichment discipline forbids.
         // Live mode reads these; fixture mode's configured templates ignore them. See M4 spec §6.
         sources: Array.isArray(signal.payload.sources) ? [...signal.payload.sources] : [],
+        // The person-level source, also named by the signal in live mode, for the same reason the
+        // claim sources are. See M4 spec §6.
+        ...(isNonEmptyString(signal.payload.identity_source)
+          ? { identity_source: signal.payload.identity_source }
+          : {}),
       },
       evidence_refs: [`signal:${signal.id}`],
     });

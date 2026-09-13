@@ -11,7 +11,8 @@ import { createHash } from 'node:crypto';
 
 import { canonical } from './canonical.mjs';
 import { Ledger } from './ledger.mjs';
-import { createContext, fixtureClock, recordedFetcher } from './context.mjs';
+import { createContext, fixtureClock, recordedFetcher, recordedClock } from './context.mjs';
+import { capturingFetcher, capturingModel, recordedModel } from './live/capture.mjs';
 import { runPipeline } from './kernel.mjs';
 import { defaultConfig, pipeline } from './config.mjs';
 
@@ -114,6 +115,72 @@ export function buildRun({
   });
 
   return { run_id, ledger, ctx, stages, signals: fixtures.signals };
+}
+
+// --- live and replay runs, new in M4 -------------------------------------------------------
+//
+// Both are the same eight stages the fixture run executes. What changes is where the responses, the
+// completions and the instants come from, and all three arrive through the same seams.
+//
+// THE CAPTURE IS THE PRODUCT of a live run, as much as the ledger is. A ledger says what was
+// decided; the capture says what the decisions were made from. Handing somebody one without the
+// other gives them a verdict they cannot re-derive.
+
+/**
+ * A live run: real transports, a real clock, and a capture of everything both produced.
+ *
+ * The run id is computed from an EMPTY recordings seed, because at this moment the run has observed
+ * nothing. What distinguishes one live run from the next is the clock start inside its config. The
+ * seed is recorded in the inputs file so a replay recomputes the id exactly the way the run did,
+ * rather than guessing which convention was in force.
+ */
+export function buildLiveRun({ signals, config, stages = pipeline, fetch, model, clock, decisions = [] }) {
+  const runConfig = { ...config, queue: { ...config.queue, approvals: [...decisions] } };
+  const recordingsSeed = {};
+  const run_id = computeRunId({
+    pipeline: stages,
+    config: runConfig,
+    signals,
+    recordings: recordingsSeed,
+  });
+
+  const capture = {};
+  const ledger = new Ledger();
+  const ctx = createContext({
+    ledger,
+    clock,
+    fetch: capturingFetcher(fetch, capture),
+    model: model === undefined ? undefined : capturingModel(model, capture),
+    config: runConfig,
+    run_id,
+  });
+
+  return { run_id, ledger, ctx, stages, signals, capture, config: runConfig, recordingsSeed };
+}
+
+/**
+ * A run rebuilt from a capture: recorded responses, recorded completions, recorded instants.
+ *
+ * Nothing here can reach the network and nothing needs a key, which is the point — whoever you hand
+ * a run directory to can re-derive every decision in it without your credentials.
+ */
+export function buildReplayRun(inputs, stages = pipeline) {
+  const run_id = computeRunId({
+    pipeline: stages,
+    config: inputs.config,
+    signals: inputs.signals,
+    recordings: inputs.recordings_seed ?? {},
+  });
+  const ledger = new Ledger();
+  const ctx = createContext({
+    ledger,
+    clock: recordedClock(inputs.clock ?? []),
+    fetch: recordedFetcher(inputs.recordings ?? {}),
+    model: recordedModel(inputs.recordings ?? {}),
+    config: inputs.config,
+    run_id,
+  });
+  return { run_id, ledger, ctx, stages, signals: inputs.signals };
 }
 
 export async function executeFixtureRun(options = {}) {

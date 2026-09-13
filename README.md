@@ -54,6 +54,7 @@ run run-670363eec75d
 
   Nothing was sent. This tool never sends mail.
   Inspect a decision with: node bin/signal-desk.mjs explain <lead>
+  See the whole run at once with: node bin/signal-desk.mjs dashboard
   Act on what is parked with: node bin/signal-desk.mjs queue
 ```
 

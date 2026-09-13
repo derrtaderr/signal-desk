@@ -1,4 +1,4 @@
-// The CLI. Seven verbs: run, queue, approve, reject, explain, replay, dashboard.
+// The CLI. Eight verbs: run, run --live, queue, approve, reject, explain, replay, dashboard, dlq.
 //
 // This is where bytes reach disk. Stages do no I/O and the kernel writes only to an
 // in-memory ledger, so putting every write in one place keeps the rest of the system
@@ -16,7 +16,15 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, statSy
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { executeFixtureRun, buildRun, loadFixtures } from './runner.mjs';
+import { executeFixtureRun, buildRun, buildLiveRun, buildReplayRun, loadFixtures } from './runner.mjs';
+import { recordingClock } from './context.mjs';
+import { createLiveFetcher } from './live/http.mjs';
+import { createLiveModel } from './live/anthropic.mjs';
+import { nodeTransport } from './live/node-transport.mjs';
+import { resolveModelKey } from './live/keys.mjs';
+import { liveConfig, resolveSignalSecret, MODEL_VARIABLE } from './live/config.mjs';
+import { loadLiveSignals, liveSignalFromBytes } from './live/signals.mjs';
+import { writeDeadLetter, readDeadLetters, isDeadLetterable, dlqPath } from './live/dlq.mjs';
 import {
   loadDecisions,
   loadDecisionEntries,
@@ -36,12 +44,14 @@ inspected, replayed, or refused.
 
 Usage:
   node bin/signal-desk.mjs run            Run the keyless fixture pipeline and write a ledger
+  node bin/signal-desk.mjs run --live     Run real signals against real sources and a real model
   node bin/signal-desk.mjs queue          List drafts parked for a human, with their hashes
   node bin/signal-desk.mjs approve <id>   Approve a parked draft, binding to its content
   node bin/signal-desk.mjs reject <id>    Reject a parked draft, with an optional --note
   node bin/signal-desk.mjs explain <lead> Print the full decision trail for one lead
   node bin/signal-desk.mjs replay <run>   Re-execute a run and verify its ledger still matches
   node bin/signal-desk.mjs dashboard     Render a run's ledger as one self-contained HTML file
+  node bin/signal-desk.mjs dlq            List payloads live ingest could not accept, and replay them
 
 There is no install step, so the invocation is spelled out in full. A bare signal-desk is
 not on PATH in a fresh clone.
@@ -53,6 +63,11 @@ decision stops covering it, so the lead parks again rather than going out unread
 
 Runs are written to ./runs/<run-id>/. The fixture demo needs no API key and no network.
 This tool never sends mail; handoffs are written as dry-run JSON.
+
+Live mode brings your own key. Export SIGNAL_DESK_ANTHROPIC_KEY (or ANTHROPIC_API_KEY)
+and SIGNAL_DESK_SIGNAL_SECRET, put signed payload files in ./signals/, and every draft
+faces exactly the gates the fixture demo shows. A live run captures what it observed, so
+it replays offline with no key at all. See the live-mode section of the README.
 `;
 
 function runsDir(env, cwd) {
@@ -119,10 +134,37 @@ async function verbRun({ out, env, cwd }) {
   // Decisions a human recorded with `approve` / `reject`, layered over the shipped corpus. A
   // fresh clone has none, which is what keeps the README's example output true for everyone.
   const { run_id, ledger, report } = await executeFixtureRun({ decisions: loadDecisions(base) });
-  const dir = join(base, run_id);
 
+  // No inputs file. A fixture run's inputs are the committed corpus, so writing a copy of them
+  // into the run directory would duplicate the repo and invite the two to disagree. A LIVE run
+  // writes one because its inputs exist nowhere else.
+  writeRunArtifacts({ base, run_id, ledger, report, cwd, out });
+  return 0;
+}
+
+
+// --- run --live ------------------------------------------------------------------------
+//
+// The same eight stages, with real transports behind the two seams. See docs/M4-SPEC.md and
+// src/live/config.mjs for what changes and — the more important list — what does not.
+//
+// THE ORDER OF THE CHECKS IS PART OF THE BEHAVIOUR. Both credentials are resolved BEFORE any file
+// is read, any URL is fetched, or any directory is created, so a missing key costs nothing and
+// leaves nothing behind. A tool that half-ran and then complained about its configuration would
+// have already contacted somebody's server on the strength of a run it could not finish.
+
+export const LIVE_SIGNALS_DIR = 'signals';
+
+function writeRunArtifacts({ base, run_id, ledger, report, cwd, out, inputs }) {
+  const dir = join(base, run_id);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'ledger.jsonl'), ledger.toJSONL());
+
+  // The capture, written beside the ledger because it is the other half of the same artifact. A
+  // ledger says what was decided; this says what the decisions were made from. See M4 spec §6.
+  if (inputs !== undefined) {
+    writeFileSync(join(dir, 'inputs.json'), `${JSON.stringify(inputs, null, 2)}\n`);
+  }
 
   const handoffDir = join(dir, 'handoffs');
   mkdirSync(handoffDir, { recursive: true });
@@ -132,9 +174,6 @@ async function verbRun({ out, env, cwd }) {
     writeArtifact(join(handoffDir, filename), adapters[adapter].serialize(artifact));
   }
 
-  // Parked drafts, written so `queue` has something to show a human and `approve` has
-  // something to bind to. Named per lead AND per draft for the same reason exports are: two
-  // different messages to one person must not collide.
   const parked = report.leads.filter(
     (lead) => lead.final_status === 'NEEDS_HUMAN' && lead.output?.draft_hash !== undefined,
   );
@@ -149,8 +188,6 @@ async function verbRun({ out, env, cwd }) {
             lead_id: lead.lead_id,
             draft_hash: lead.output.draft_hash,
             run_id,
-            // From route, not from queue. The kernel adopts a stage's output only on PASS,
-            // so a lead parked BY the queue stage never carries that stage's own output.
             owner: lead.output.route.owner,
             reason: lead.reason_codes.join(','),
             to: lead.output.draft.to,
@@ -164,15 +201,14 @@ async function verbRun({ out, env, cwd }) {
     }
   }
 
-  // An explicit pointer to the run just written.
-  //
-  // "Latest" USED to mean the lexicographically last run id, and that is wrong: a run id is a
-  // hash of the inputs, so its ordering is arbitrary and has nothing to do with time. Approving
-  // a draft changes the inputs, so the next run's id can sort BEFORE the previous one, and
-  // `queue` would then show a stale run's parked drafts and invite a human to approve a draft
-  // that had already been decided. Caught by an intermittently failing workflow test.
   writeFileSync(join(base, LATEST_POINTER), `${run_id}\n`);
 
+  const show = (path) => relative(cwd, path) || path;
+  reportRun({ out, run_id, report, show, dir, handoffDir, handed });
+  return { dir, handed };
+}
+
+function reportRun({ out, run_id, report, show, dir, handoffDir, handed }) {
   out(`run ${run_id}`);
   out('');
   out(`  ${report.summary.PASS} passed to handoff`);
@@ -186,26 +222,202 @@ async function verbRun({ out, env, cwd }) {
     out(`  ${pad(lead.lead_id, 22)} ${pad(lead.final_stage, 9)} ${pad(lead.final_status, 12)} ${reason}`);
   }
 
-  // Relative to the working directory. An absolute path would make this output
-  // machine-specific, which breaks both the README example and the promise that a run
-  // carries no local state.
-  const show = (path) => relative(cwd, path) || path;
-
   out('');
   out(`  ledger    ${show(join(dir, 'ledger.jsonl'))}`);
   out(`  handoffs  ${handed.length} dry run artifact(s) in ${show(handoffDir)}`);
   out('');
   out('  Nothing was sent. This tool never sends mail.');
-  // The real invocation form. There is no install step, so `signal-desk` is not on PATH in a
-  // fresh clone and telling a reader to type it sends them into a "command not found".
   out(`  Inspect a decision with: node bin/signal-desk.mjs explain <lead>`);
+  // The M3 advocate's carry: `dashboard` existed and the run that produced it never mentioned it.
+  out('  See the whole run at once with: node bin/signal-desk.mjs dashboard');
   if (report.summary.NEEDS_HUMAN > 0) {
     out(`  Act on what is parked with: node bin/signal-desk.mjs queue`);
   }
+}
 
+// Dead-letters what INGEST refused, and nothing else. The boundary is argued in src/live/dlq.mjs:
+// "we could not accept this" has a fix at the sender, "we accepted it and said no" is a decision the
+// ledger already holds and replaying it until it passes is not a recovery.
+function deadLetterIngestRefusals({ base, report, signals, run_id, at, out }) {
+  const written = [];
+  for (const lead of report.leads) {
+    if (lead.final_stage !== 'ingest' || lead.final_status !== 'REFUSE') continue;
+    const reason = lead.reason_codes[0];
+    if (!isDeadLetterable(reason)) continue;
+
+    // The kernel files a refused ingest under the signal's own id, so the bytes are found by it.
+    const signal = signals.find((candidate) => candidate.id === lead.lead_id) ?? {};
+    written.push(
+      writeDeadLetter(base, {
+        reason,
+        detail: lead.detail ?? null,
+        source: signal.source_file ?? null,
+        signal_id: signal.id ?? lead.lead_id,
+        signature: signal.signature ?? '',
+        raw: signal.raw ?? '',
+        at,
+        run_id,
+      }),
+    );
+  }
+  if (written.length > 0) {
+    out('');
+    out(`  ${written.length} signal(s) dead-lettered. Inspect with: node bin/signal-desk.mjs dlq`);
+  }
+  return written;
+}
+
+async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at }) {
+  // Credentials first, before anything is read or written. See the note above.
+  let key;
+  let secret;
+  try {
+    key = resolveModelKey(env);
+    secret = resolveSignalSecret(env);
+  } catch (error) {
+    err(`${error.code}: ${error.message}`);
+    return 2;
+  }
+
+  const transport = httpTransport ?? nodeTransport();
+  const clock = recordingClock();
+  const config = liveConfig({ secret, startedAt: at, model: env[MODEL_VARIABLE] });
+
+  const { run_id, ledger, ctx, stages, capture, config: runConfig, recordingsSeed } = buildLiveRun({
+    signals,
+    config,
+    clock,
+    fetch: createLiveFetcher({ transport, clock }),
+    model: createLiveModel({ key, transport, model: config.model }),
+  });
+
+  const report = await runPipeline({ stages, signals, ctx, ledger });
+
+  const written = writeRunArtifacts({
+    base,
+    run_id,
+    ledger,
+    report,
+    cwd,
+    out,
+    // Everything a replay needs and nothing a replay must not have. No key, no headers, no
+    // endpoint: src/live/capture.mjs keeps those out and a test asserts it.
+    inputs: {
+      mode: 'live',
+      config: runConfig,
+      signals,
+      recordings: capture,
+      recordings_seed: recordingsSeed,
+      clock: clock.readings(),
+    },
+  });
+
+  // Payload files that never became a signal, plus everything ingest refused.
+  for (const entry of dead) {
+    writeDeadLetter(base, { ...entry, at, run_id });
+  }
+  deadLetterIngestRefusals({ base, report, signals, run_id, at, out });
+
+  out('');
+  out(`  Replay it with no key at all: node bin/signal-desk.mjs replay ${run_id}`);
+  void written;
   return 0;
 }
 
+function flagPresent(args, name) {
+  return args.includes(name);
+}
+
+async function verbRunLive({ args, out, err, env, cwd, now, httpTransport }) {
+  const base = runsDir(env, cwd);
+  const signalsDir = flagValue(args, '--signals') ?? join(cwd, LIVE_SIGNALS_DIR);
+  const at = now();
+
+  // Read AFTER the credential check inside executeLive, so a keyless invocation touches no files.
+  // The loader is passed as a thunk rather than its result for exactly that reason.
+  let key;
+  try {
+    resolveModelKey(env);
+    resolveSignalSecret(env);
+  } catch (error) {
+    err(`${error.code}: ${error.message}`);
+    return 2;
+  }
+  void key;
+
+  const { signals, dead, missingDir } = loadLiveSignals(signalsDir);
+  if (missingDir) {
+    err(`no signal directory at ${signalsDir}`);
+    err('live mode reads payload files. Point it somewhere with --signals <dir>, or see the');
+    err('live-mode section of the README for the file layout it expects.');
+    return 2;
+  }
+  if (signals.length === 0 && dead.length === 0) {
+    err(`${signalsDir} holds no .json payload files, so there is nothing to run`);
+    return 2;
+  }
+
+  return executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at });
+}
+
+// --- dlq ---------------------------------------------------------------------------------
+
+async function verbDlq(context) {
+  const { args, out, err, env, cwd } = context;
+  const base = runsDir(env, cwd);
+  const letters = readDeadLetters(base);
+
+  if (flagPresent(args, '--replay')) {
+    if (letters.length === 0) {
+      out('nothing is dead-lettered, so there is nothing to replay.');
+      return 0;
+    }
+    const signals = [];
+    const dead = [];
+    for (const letter of letters) {
+      const { signal, dead: stillDead } = liveSignalFromBytes(letter.raw, letter.signature, letter.file);
+      if (signal !== undefined) signals.push(signal);
+      else dead.push(stillDead);
+    }
+    out(`replaying ${letters.length} dead letter(s)`);
+    out('');
+    return executeLive({
+      signals,
+      dead,
+      base,
+      env,
+      cwd,
+      out,
+      err,
+      httpTransport: context.httpTransport,
+      at: context.now(),
+    });
+  }
+
+  if (letters.length === 0) {
+    out('nothing is dead-lettered.');
+    out('');
+    out('  Every signal this pipeline was handed was accepted, or was refused for a reason the');
+    out('  ledger records. A dead letter is a payload that never became a signal at all.');
+    return 0;
+  }
+
+  out(`${letters.length} dead letter(s) in ${relative(cwd, dlqPath(base)) || dlqPath(base)}`);
+  out('');
+  for (const letter of letters) {
+    out(`  ${letter.file}`);
+    out(`    reason    ${letter.reason}`);
+    out(`    signal    ${letter.signal_id ?? '(never parsed)'}`);
+    out(`    from      ${letter.source ?? '(unknown)'}`);
+    if (letter.detail) out(`    detail    ${letter.detail}`);
+    out('');
+  }
+  out('  Each one keeps the exact bytes it arrived as, so a fix at the sender can be proven');
+  out('  against the same message rather than a reconstruction of it.');
+  out('');
+  out('  Re-feed them with: node bin/signal-desk.mjs dlq --replay');
+  return 0;
+}
 
 // --- queue / approve / reject -----------------------------------------------------------
 //
@@ -451,14 +663,26 @@ async function verbReplay({ args, out, err, env, cwd }) {
       `${seal.summary.REFUSE} refused, ${seal.summary.total} in total`,
   );
 
-  // The decisions have to be layered in exactly as `run` layers them, or this re-execution is
-  // not a re-execution of the same run. Omitting them rebuilt the run from the fixture corpus
-  // alone, which produced the fixture-only run id and reported "the inputs or the wiring have
-  // changed" at the happy path's final step, blaming the user for a wiring bug.
-  const { ledger, ctx, stages, signals, run_id } = buildRun({
-    fixtures: loadFixtures(),
-    decisions: loadDecisions(runsDir(env, cwd)),
-  });
+  // A LIVE run replays from its own capture. Its inputs — the responses, the completions and the
+  // clock readings — exist nowhere else, so the run directory carries them and this reads them
+  // back. Nothing here needs a key or a socket, which is the point: whoever you hand a run
+  // directory to can re-derive every decision in it without your credentials.
+  //
+  // A FIXTURE run has no inputs file, because its inputs are the committed corpus. Writing a copy
+  // into the run directory would duplicate the repo and invite the two to disagree.
+  const inputsPath = join(runsDir(env, cwd), runId, 'inputs.json');
+  const replayed = existsSync(inputsPath)
+    ? buildReplayRun(JSON.parse(readFileSync(inputsPath, 'utf8')))
+    : buildRun({
+        fixtures: loadFixtures(),
+        // The decisions have to be layered in exactly as `run` layers them, or this re-execution
+        // is not a re-execution of the same run. Omitting them rebuilt the run from the fixture
+        // corpus alone, which produced the fixture-only run id and reported "the inputs or the
+        // wiring have changed" at the happy path's final step, blaming the user for a wiring bug.
+        decisions: loadDecisions(runsDir(env, cwd)),
+      });
+
+  const { ledger, ctx, stages, signals, run_id } = replayed;
   await runPipeline({ stages, signals, ctx, ledger });
 
   if (run_id !== runId) {
@@ -558,13 +782,19 @@ export async function main({
   // than a pipeline position, and a test that needs a fixed one should not have to freeze
   // the process clock to get it.
   now = () => new Date().toISOString(),
+  // The HTTP implementation live mode uses. Injected so the live paths can be driven without a
+  // socket; when it is absent the CLI builds the real one, and src/live/node-transport.mjs is the
+  // only module in the repo that can. See test/no-network.test.mjs.
+  httpTransport,
 } = {}) {
   const [verb, ...args] = argv;
-  const context = { args, out, err, env, cwd, now };
+  const context = { args, out, err, env, cwd, now, httpTransport };
 
   switch (verb) {
     case 'run':
-      return verbRun(context);
+      return args.includes('--live') ? verbRunLive(context) : verbRun(context);
+    case 'dlq':
+      return verbDlq(context);
     case 'queue':
       return verbQueue(context);
     case 'approve':
