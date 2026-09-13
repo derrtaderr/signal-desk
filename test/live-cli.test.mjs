@@ -265,13 +265,26 @@ test('the live run writes a capture, and a REAL SUBPROCESS replays it offline an
 
   assert.ok(existsSync(join(runs, runId, 'inputs.json')), 'the run captured what it observed');
 
-  const stdout = execFileSync(process.execPath, [BIN, 'replay', runId], {
+  // Two outcomes, because M4's secret decision made them genuinely different claims, and both are
+  // worth pinning. WITH the signing secret the run re-executes in full and the bytes match. Without
+  // it the chain and the seal still verify and replay says plainly what it could not check. See
+  // test/live-secret.test.mjs for the argument.
+  const withSecret = execFileSync(process.execPath, [BIN, 'replay', runId], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs, SIGNAL_DESK_SIGNAL_SECRET: SECRET },
+  });
+  assert.match(withSecret, /hash chain verified/);
+  assert.match(withSecret, /is an exact match/);
+  assert.match(withSecret, /identical bytes/);
+  assert.ok(!withSecret.includes(SECRET), 'and the secret is not echoed back at the operator');
+
+  // No model key in either invocation: re-deriving a live run never needs the paid credential.
+  const bare = execFileSync(process.execPath, [BIN, 'replay', runId], {
     encoding: 'utf8',
     env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
   });
-  assert.match(stdout, /hash chain verified/);
-  assert.match(stdout, /is an exact match/);
-  assert.match(stdout, /identical bytes/);
+  assert.match(bare, /hash chain verified/);
+  assert.match(bare, /not re-verified|were NOT/i);
 });
 
 test('the capture holds no key, in any file the run wrote', async () => {

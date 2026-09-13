@@ -21,8 +21,14 @@ import { recordingClock } from './context.mjs';
 import { createLiveFetcher } from './live/http.mjs';
 import { createLiveModel } from './live/anthropic.mjs';
 import { nodeTransport } from './live/node-transport.mjs';
-import { resolveModelKey, secretScrubber } from './live/keys.mjs';
-import { liveConfig, resolveSignalSecret, MODEL_VARIABLE } from './live/config.mjs';
+import {
+  resolveModelKey,
+  secretScrubber,
+  publicConfig,
+  secretFingerprint,
+  SecretMismatchError,
+} from './live/keys.mjs';
+import { liveConfig, resolveSignalSecret, MODEL_VARIABLE, SECRET_VARIABLE } from './live/config.mjs';
 import { loadLiveSignals, liveSignalFromBytes } from './live/signals.mjs';
 import { writeDeadLetter, readDeadLetters, isDeadLetterable, dlqPath } from './live/dlq.mjs';
 import {
@@ -327,7 +333,11 @@ async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransp
     // endpoint: src/live/capture.mjs keeps those out and a test asserts it.
     inputs: {
       mode: 'live',
-      config: runConfig,
+      // THE PUBLIC CONFIG, never the executing one. This file is the artifact the README tells you
+      // to hand to other people, and it used to carry the signing secret verbatim. It now carries a
+      // fingerprint; replay resolves the real secret from the environment. See src/live/keys.mjs for
+      // the decision and what each of the three replay outcomes can honestly claim.
+      config: publicConfig(runConfig),
       signals,
       recordings: capture,
       recordings_seed: recordingsSeed,
@@ -697,8 +707,47 @@ async function verbReplay({ args, out, err, env, cwd }) {
   // A FIXTURE run has no inputs file, because its inputs are the committed corpus. Writing a copy
   // into the run directory would duplicate the repo and invite the two to disagree.
   const inputsPath = join(runsDir(env, cwd), runId, 'inputs.json');
-  const replayed = existsSync(inputsPath)
-    ? buildReplayRun(JSON.parse(readFileSync(inputsPath, 'utf8')))
+  let inputs = null;
+  if (existsSync(inputsPath)) {
+    inputs = JSON.parse(readFileSync(inputsPath, 'utf8'));
+
+    // THE SIGNING SECRET IS NOT IN THE CAPTURE, by decision. See src/live/keys.mjs. Three outcomes,
+    // and the point of separating them is that each can claim exactly what it checked.
+    const fingerprint = inputs.config?.ingest?.secret_fingerprint;
+    if (typeof fingerprint === 'string' && fingerprint !== '') {
+      const supplied = env[SECRET_VARIABLE];
+      const haveSecret = typeof supplied === 'string' && supplied.trim() !== '';
+
+      if (haveSecret && secretFingerprint(supplied.trim()) !== fingerprint) {
+        const mismatch = new SecretMismatchError();
+        err(`${mismatch.code}: ${mismatch.message}`);
+        return 1;
+      }
+
+      if (!haveSecret) {
+        // Deliberately does NOT re-execute. Re-executing with no secret would skip the signature
+        // check the original run performed and then print "exact match", which claims more than was
+        // verified. What a reader needs is the boundary named and the way to cross it.
+        out('');
+        out('  signatures were NOT re-verified: this run signs over raw bytes and no signing');
+        out(`  secret is available. Export ${SECRET_VARIABLE} to re-execute the run in full.`);
+        out('');
+        out('  What was verified: the ledger was not edited after it was written (chain), and it is');
+        out('  the record of a completed run (seal).');
+        out('  What was not: that each payload was signed by the sender you trust, and that');
+        out('  re-executing the pipeline still produces these exact bytes.');
+        return 0;
+      }
+
+      inputs = {
+        ...inputs,
+        config: { ...inputs.config, ingest: { ...inputs.config.ingest, secret: supplied.trim() } },
+      };
+    }
+  }
+
+  const replayed = inputs !== null
+    ? buildReplayRun(inputs)
     : buildRun({
         fixtures: loadFixtures(),
         // The decisions have to be layered in exactly as `run` layers them, or this re-execution
@@ -724,6 +773,9 @@ async function verbReplay({ args, out, err, env, cwd }) {
 
   out(`replay of ${runId} is an exact match`);
   out(`${recordedEntries.length} entries, identical bytes, chain intact`);
+  if (inputs?.config?.ingest?.secret_fingerprint !== undefined) {
+    out('every payload signature was re-verified against the secret you supplied');
+  }
   return 0;
 }
 

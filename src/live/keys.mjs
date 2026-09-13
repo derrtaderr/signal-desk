@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 // Key resolution, and the one place the precedence rule is written down. M4 spec §11.
 //
 // The environment is passed IN rather than read here. That keeps this module a pure function of
@@ -13,6 +15,81 @@
 // the override impossible to express, which is the only thing precedence is for.
 
 export const KEY_VARIABLES = Object.freeze(['SIGNAL_DESK_ANTHROPIC_KEY', 'ANTHROPIC_API_KEY']);
+
+// --- the signing-secret fingerprint --------------------------------------------------------
+//
+// A live run used to write `config.ingest.secret` verbatim into `runs/<id>/inputs.json`, the one
+// artifact the README tells you to hand to other people. Found by the M4 ship-check.
+//
+// THE TENSION THAT MAKES THIS A DECISION RATHER THAN A DELETION. Replay re-executes ingest, and in
+// raw mode ingest verifies an HMAC, which needs the secret. Taking it out of the capture takes
+// something away from replay.
+//
+// THE CHOICE. The capture stores a fingerprint; replay resolves the real secret from the
+// environment, exactly as the live run did. Three outcomes, and the third is the honest one:
+//
+//   matching secret    full re-execution, byte comparison, signatures genuinely re-verified
+//   different secret   REFUSED by name, instead of a byte divergence reported as "the inputs or the
+//                      wiring have changed" — which would send a reader hunting a code change that
+//                      does not exist. This is the case the fingerprint exists for.
+//   no secret          chain and seal verified, and replay SAYS the signatures were not re-verified
+//                      and names the variable that would allow it.
+//
+// The alternative for the third row was to re-execute anyway with verification skipped. That was
+// rejected: it would report "exact match" while having checked strictly less than the original run,
+// so the word "match" would quietly stop meaning what a reader takes it to mean. A weaker claim
+// stated plainly beats a stronger claim that is not quite true.
+//
+// THE RESIDUAL, stated rather than left to be discovered. This is a salted SHA-256 truncated to 64
+// bits, not a password KDF. A LOW-ENTROPY secret is therefore brute-forceable offline from the
+// fingerprint. That is acceptable because an HMAC secret shared with a sending system should be
+// high-entropy random rather than memorable, and the truncation limits what an attacker gains; it
+// is NOT acceptable to pretend otherwise, so it is written here. A deployment using a guessable
+// shared secret has a bigger problem than this file.
+
+const FINGERPRINT_DOMAIN = 'signal-desk/signal-secret-fingerprint/v1';
+
+export function secretFingerprint(secret) {
+  return createHash('sha256')
+    .update(`${FINGERPRINT_DOMAIN}\n${String(secret ?? '')}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+/**
+ * The config as it may be WRITTEN DOWN: the same object with every credential removed.
+ *
+ * Used for two things that must agree, which is why it is one function rather than two. The capture
+ * stores this, and the run id is computed over this. If the id covered the secret and the capture
+ * did not, a replay could never recompute the id it was checking against.
+ *
+ * It also means NO run id anywhere is a function of a credential, in fixture mode as well as live,
+ * which is the uniform version of the rule and the one worth having.
+ */
+export function publicConfig(config) {
+  if (config === null || typeof config !== 'object') return config;
+  const ingest = config.ingest;
+  if (ingest === null || typeof ingest !== 'object' || ingest.secret === undefined) return config;
+
+  const { secret, ...rest } = ingest;
+  return {
+    ...config,
+    ingest: { ...rest, secret_fingerprint: secretFingerprint(secret) },
+  };
+}
+
+export class SecretMismatchError extends Error {
+  constructor() {
+    super(
+      'the signing secret in your environment is not the one this run was executed with. Replaying ' +
+        'with a different secret would refuse every signal for an invalid signature and report a ' +
+        'byte mismatch, which reads as a code change rather than as the configuration difference it ' +
+        'is. Unset SIGNAL_DESK_SIGNAL_SECRET to verify the chain and the seal without re-executing.',
+    );
+    this.name = 'SecretMismatchError';
+    this.code = 'SECRET_MISMATCH';
+  }
+}
 
 export class MissingKeyError extends Error {
   constructor() {

@@ -29,9 +29,23 @@ import { signRaw } from '../src/stages/ingest.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// A value no real key could be, so a hit is unambiguous and a miss is not luck.
+// Values no real credential could be, so a hit is unambiguous and a miss is not luck.
+//
+// TWO CANARIES, NOT ONE, and the second one is here because its absence let a real leak ship. The
+// first version of this file set a canary secret and then only ever grepped for the model KEY, so
+// 830 tests passed over `config.ingest.secret` written verbatim into the capture — the one artifact
+// the README tells you to hand to other people. The M4 ship-check found it.
+//
+// THE LESSON IS ABOUT THIS FILE'S OWN SHAPE. A hygiene test names the values it hunts for, so any
+// credential the code learns to hold and this list does not name is invisible to it. Every secret
+// the process handles belongs in CANARIES, and the assertion loops over the list rather than over a
+// single constant, so adding one is one line and forgetting one is the failure mode to design out.
 const CANARY = 'sk-ant-CANARY-3f9b2e71d4a8c605-DO-NOT-LOG';
-const SECRET = 'canary-signal-secret';
+const SECRET = 'SIGNING-SECRET-CANARY-4d7e02b9-DO-NOT-PERSIST';
+const CANARIES = Object.freeze([
+  { name: 'model key', value: CANARY },
+  { name: 'signing secret', value: SECRET },
+]);
 const SOURCE = 'https://directory.example.com/company/acme.example.com';
 
 function tmp(prefix) {
@@ -90,9 +104,11 @@ async function runWith(transport, { runs, extraVerbs = [] } = {}) {
 }
 
 function assertNoCanary({ printed, files }, label) {
-  assert.ok(!printed.includes(CANARY), `${label}: the key reached stdout or stderr`);
-  for (const file of files) {
-    assert.ok(!readFileSync(file, 'utf8').includes(CANARY), `${label}: the key reached ${file}`);
+  for (const { name, value } of CANARIES) {
+    assert.ok(!printed.includes(value), `${label}: the ${name} reached stdout or stderr`);
+    for (const file of files) {
+      assert.ok(!readFileSync(file, 'utf8').includes(value), `${label}: the ${name} reached ${file}`);
+    }
   }
   // A positive control on the method itself. A test that greps nothing passes trivially, and a
   // hygiene test that could pass while inspecting an empty directory is worse than no test.
@@ -136,6 +152,12 @@ test('a SUCCESSFUL live run leaves the key in no file it wrote and no line it pr
   assertNoCanary(result, 'successful run');
   assert.ok(result.files.some((file) => file.endsWith('inputs.json')), 'and the capture was written');
   assert.ok(result.files.some((file) => file.endsWith('dashboard.html')), 'and the dashboard was rendered');
+
+  // Named explicitly as well as swept, because this exact file with this exact credential is the
+  // leak the ship-check found, and a regression here should fail by name rather than as one of many.
+  const capture = readFileSync(result.files.find((file) => file.endsWith('inputs.json')), 'utf8');
+  assert.ok(!capture.includes(SECRET), 'the shareable capture carries no signing secret');
+  assert.equal(JSON.parse(capture).config.ingest.secret, undefined);
 });
 
 test('a provider 401 that ECHOES the key back does not carry it into any artifact', async () => {
@@ -205,13 +227,17 @@ test('a run whose every lead is DEAD-LETTERED leaves the key out of the dead let
   assertNoCanary({ printed: printed.join('\n'), files }, 'dead-lettered run');
 });
 
-test('the canary method itself works, proven by planting the value and finding it', () => {
-  // The control this whole file rests on. If the grep could not find a key that IS there, every
-  // passing assertion above would be meaningless.
-  const runs = tmp('canary-control');
-  writeFileSync(join(runs, 'planted.txt'), `a file containing ${CANARY} on purpose\n`);
-  assert.throws(
-    () => assertNoCanary({ printed: '', files: walk(runs) }, 'control'),
-    /the key reached/,
-  );
+test('the canary method itself works, proven by planting EACH value and finding it', () => {
+  // The control this whole file rests on. If the grep could not find a credential that IS there,
+  // every passing assertion above would be meaningless. Run per canary rather than once, because
+  // the leak that shipped was precisely a canary that was set and never searched for.
+  for (const { name, value } of CANARIES) {
+    const runs = tmp('canary-control');
+    writeFileSync(join(runs, 'planted.txt'), `a file containing ${value} on purpose\n`);
+    assert.throws(
+      () => assertNoCanary({ printed: '', files: walk(runs) }, 'control'),
+      new RegExp(`the ${name} reached`),
+      `the control for the ${name} does not actually detect it`,
+    );
+  }
 });

@@ -13,6 +13,7 @@ import { canonical } from './canonical.mjs';
 import { Ledger } from './ledger.mjs';
 import { createContext, fixtureClock, recordedFetcher, recordedClock } from './context.mjs';
 import { capturingFetcher, capturingModel, recordedModel } from './live/capture.mjs';
+import { publicConfig } from './live/keys.mjs';
 import { runPipeline } from './kernel.mjs';
 import { defaultConfig, pipeline } from './config.mjs';
 
@@ -68,12 +69,17 @@ export function loadFixtures(dir = FIXTURES_DIR) {
 // A live run passes {} here, because it has captured nothing at the moment its id is computed.
 // What distinguishes one live run from the next is its clock start, which lives in config and is
 // therefore already covered.
+// NO RUN ID IS A FUNCTION OF A CREDENTIAL, added when the M4 ship-check found the signing secret in
+// the shareable capture. The id is computed over the config as it may be WRITTEN DOWN, with secrets
+// replaced by their fingerprints, which is exactly what the capture stores. The two have to agree:
+// if the id covered the secret and the capture did not, a replay could never recompute the id it is
+// checking against. Applied in fixture mode too, so there is one rule rather than two.
 export function computeRunId({ pipeline: stages, config, signals, recordings = {} }) {
   const digest = createHash('sha256')
     .update(
       canonical({
         stages: stages.map((stage) => stage.name),
-        config,
+        config: publicConfig(config),
         signals: signals.map((signal) => canonical(signal)).sort(),
         recordings,
       }),
