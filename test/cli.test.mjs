@@ -186,3 +186,73 @@ test('replay on an unknown run exits non-zero', () => {
     assert.throws(() => cli(['replay', 'run-000000000000'], { cwd: dir }));
   });
 });
+
+// --- replay refuses an incomplete ledger ----------------------------------------------
+//
+// The M1 review's repro: truncating a ledger's last lines leaves a chain that verifies clean,
+// because a chain proves order and integrity, never completeness. These run through the real
+// CLI as a subprocess, which is the level where the check actually protects anyone.
+
+test('replay refuses a truncated ledger, even though its chain still verifies', () => {
+  withTempRuns((dir) => {
+    const runOutput = cli(['run'], { cwd: dir });
+    const runId = runOutput.match(/run-[0-9a-f]{12}/)[0];
+    const path = join(dir, 'runs', runId, 'ledger.jsonl');
+
+    const lines = readFileSync(path, 'utf8').trimEnd().split('\n');
+    writeFileSync(path, `${lines.slice(0, lines.length - 3).join('\n')}\n`);
+
+    assert.throws(() => cli(['replay', runId], { cwd: dir }), /seal|completed run/i);
+  });
+});
+
+test('the truncation message distinguishes removed lines from tampering', () => {
+  withTempRuns((dir) => {
+    const runOutput = cli(['run'], { cwd: dir });
+    const runId = runOutput.match(/run-[0-9a-f]{12}/)[0];
+    const path = join(dir, 'runs', runId, 'ledger.jsonl');
+    const lines = readFileSync(path, 'utf8').trimEnd().split('\n');
+    writeFileSync(path, `${lines.slice(0, lines.length - 1).join('\n')}\n`);
+
+    let output = '';
+    try {
+      cli(['replay', runId], { cwd: dir });
+      assert.fail('replay should have refused');
+    } catch (error) {
+      output = `${error.stdout}${error.stderr}`;
+    }
+    // Both facts, because they lead to different investigations.
+    assert.match(output, /chain verified/i, 'it still reports the chain as intact');
+    assert.match(output, /order, not completeness/i, 'and names why that is not enough');
+  });
+});
+
+test('dropping only the final line is caught, because the seal is the final line', () => {
+  withTempRuns((dir) => {
+    const runOutput = cli(['run'], { cwd: dir });
+    const runId = runOutput.match(/run-[0-9a-f]{12}/)[0];
+    const path = join(dir, 'runs', runId, 'ledger.jsonl');
+    const lines = readFileSync(path, 'utf8').trimEnd().split('\n');
+    writeFileSync(path, `${lines.slice(0, -1).join('\n')}\n`);
+    assert.throws(() => cli(['replay', runId], { cwd: dir }));
+  });
+});
+
+test('replay refuses an empty ledger rather than calling it a trivially valid one', () => {
+  withTempRuns((dir) => {
+    const runOutput = cli(['run'], { cwd: dir });
+    const runId = runOutput.match(/run-[0-9a-f]{12}/)[0];
+    writeFileSync(join(dir, 'runs', runId, 'ledger.jsonl'), '');
+    assert.throws(() => cli(['replay', runId], { cwd: dir }), /empty|nothing to replay/i);
+  });
+});
+
+test('replay reports the sealed summary, so the run outcome is readable from the seal', () => {
+  withTempRuns((dir) => {
+    const runOutput = cli(['run'], { cwd: dir });
+    const runId = runOutput.match(/run-[0-9a-f]{12}/)[0];
+    const output = cli(['replay', runId], { cwd: dir });
+    assert.match(output, /seal verified/i);
+    assert.match(output, /refused/i);
+  });
+});

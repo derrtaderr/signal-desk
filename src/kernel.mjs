@@ -17,6 +17,7 @@ import {
   assertStageResult,
   ContractViolationError,
 } from './contract.mjs';
+import { SEAL_STAGE, SEAL_LEAD_ID } from './ledger.mjs';
 
 const STAGE_ERROR = 'STAGE_ERROR';
 const CONTRACT_VIOLATION = 'CONTRACT_VIOLATION';
@@ -118,6 +119,26 @@ export async function runPipeline({ stages, signals, ctx, ledger }) {
     summary[finalStatus] += 1;
     summary.total += 1;
   }
+
+  // Seal the run. The kernel remains the only ledger writer, and this is the entry that turns
+  // "these lines verify as a chain" into "this is a complete record of a finished run".
+  //
+  // `head` duplicates what the seal's own `prev` link already says, deliberately. Because it
+  // sits inside the hashed payload, rewriting the summary or the head breaks the seal's own
+  // hash rather than merely disagreeing with the chain.
+  ledger.append({
+    ts: ctx.clock.now(),
+    run_id: ctx.run_id,
+    lead_id: SEAL_LEAD_ID,
+    stage: SEAL_STAGE,
+    verdict: PASS,
+    reason_codes: ['RUN_SEALED'],
+    evidence_refs: [],
+    actor: 'system',
+    sealed: true,
+    summary,
+    head: ledger.head(),
+  });
 
   return { run_id: ctx.run_id, leads, summary };
 }

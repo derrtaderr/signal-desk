@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import { executeFixtureRun, buildRun, loadFixtures } from './runner.mjs';
 import { runPipeline } from './kernel.mjs';
-import { parseLedger, verifyChain } from './ledger.mjs';
+import { parseLedger, verifyChain, isSealed, sealOf } from './ledger.mjs';
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -154,6 +154,11 @@ async function verbReplay({ args, out, err, env, cwd }) {
   const recorded = readFileSync(path, 'utf8');
   const recordedEntries = parseLedger(recorded);
 
+  if (recordedEntries.length === 0) {
+    err(`run ${runId} has an empty ledger, so there is nothing to replay`);
+    return 1;
+  }
+
   // Two independent checks. The chain proves the file was not edited after it was written.
   // The re-execution proves the code still makes the same decisions from the same inputs.
   // A file can pass one and fail the other, and the difference matters.
@@ -164,6 +169,24 @@ async function verbReplay({ args, out, err, env, cwd }) {
     return 1;
   }
   out(`hash chain verified across ${recordedEntries.length} entries`);
+
+  // Completeness, which the chain does not cover. Every entry links to the one before it, so
+  // nothing can be edited or reordered undetected, and yet nothing in that says the last line
+  // here is the last line that was written. Truncating a ledger leaves a chain that verifies
+  // perfectly clean. The seal is the terminal entry a completed run appends, so its absence is
+  // how a truncation becomes visible.
+  if (!isSealed(recordedEntries)) {
+    err(`run ${runId} has no terminal seal, so it is not a record of a completed run`);
+    err('the chain verified, which means nothing was edited. Lines were removed from the end,');
+    err('or the run never finished. A hash chain proves order, not completeness.');
+    return 1;
+  }
+
+  const seal = sealOf(recordedEntries);
+  out(
+    `seal verified: ${seal.summary.PASS} passed, ${seal.summary.NEEDS_HUMAN} parked, ` +
+      `${seal.summary.REFUSE} refused, ${seal.summary.total} in total`,
+  );
 
   const { ledger, ctx, stages, signals, run_id } = buildRun({ fixtures: loadFixtures() });
   await runPipeline({ stages, signals, ctx, ledger });

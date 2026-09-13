@@ -36,12 +36,19 @@ test('the kernel runs stages in order and threads each output into the next inpu
   assert.equal(report.leads[0].final_stage, 'two');
 });
 
+// Every run now ends with a kernel-written seal (see src/ledger.mjs). These tests are about
+// what the kernel does with STAGES, so they read the stage entries and the seal gets its own
+// file, test/seal.test.mjs.
+function stageEntries(ledger) {
+  return ledger.entries().filter((entry) => entry.stage !== 'seal');
+}
+
 test('the kernel writes one verdict entry per stage it executes', async () => {
   const stages = [alwaysPass('one'), alwaysPass('two')];
   const { ledger, run } = harness({ stages, signals: [{ id: 'a' }] });
   await run();
-  assert.deepEqual(ledger.entries().map((e) => e.stage), ['one', 'two']);
-  assert.deepEqual(ledger.entries().map((e) => e.verdict), ['PASS', 'PASS']);
+  assert.deepEqual(stageEntries(ledger).map((e) => e.stage), ['one', 'two']);
+  assert.deepEqual(stageEntries(ledger).map((e) => e.verdict), ['PASS', 'PASS']);
 });
 
 test('the kernel stamps ts, run_id and lead_id onto every entry', async () => {
@@ -66,7 +73,7 @@ test('a REFUSE halts that lead and no later stage runs for it', async () => {
   assert.equal(reached, false);
   assert.equal(report.leads[0].final_status, 'REFUSE');
   assert.deepEqual(report.leads[0].reason_codes, ['NOPE']);
-  assert.deepEqual(ledger.entries().map((e) => e.stage), ['one']);
+  assert.deepEqual(stageEntries(ledger).map((e) => e.stage), ['one']);
 });
 
 test('a refused lead does not stop the run; later leads still flow', async () => {
@@ -103,7 +110,7 @@ test('a stage that throws becomes a REFUSE carrying STAGE_ERROR, never a pass', 
   const report = await run();
   assert.equal(report.leads[0].final_status, 'REFUSE');
   assert.deepEqual(report.leads[0].reason_codes, ['STAGE_ERROR']);
-  assert.deepEqual(ledger.entries().map((e) => e.stage), ['boom']);
+  assert.deepEqual(stageEntries(ledger).map((e) => e.stage), ['boom']);
 });
 
 test('a stage returning a malformed result becomes a REFUSE carrying CONTRACT_VIOLATION', async () => {
@@ -141,7 +148,7 @@ test('supplementary entries returned by a stage are stamped and land before its 
   ];
   const { ledger, run } = harness({ stages, signals: [{ id: 'a' }] });
   await run();
-  const entries = ledger.entries();
+  const entries = stageEntries(ledger);
   assert.equal(entries.length, 2);
   assert.equal(entries[0].note, 'evidence');
   assert.deepEqual(entries[0].evidence_refs, ['https://example.test/a']);
@@ -159,7 +166,7 @@ test('the kernel adopts an assigned lead_id before stamping, so one trail covers
   ];
   const { ledger, run } = harness({ stages, signals: [{ id: 'raw-1' }] });
   await run();
-  const entries = ledger.entries();
+  const entries = stageEntries(ledger);
   assert.deepEqual(entries.map((e) => e.lead_id), ['canonical-1', 'canonical-1']);
 });
 
@@ -206,4 +213,24 @@ test('an async stage is awaited, so a stage may use the injected fetcher', async
   const { run } = harness({ stages, signals: [{ id: 'a' }] });
   const report = await run();
   assert.equal(report.leads[0].output.async, true);
+});
+
+test('the kernel seals every run it completes, including one with no signals at all', async () => {
+  // A run that processed nothing still produced a complete record of processing nothing, and
+  // that has to be distinguishable from a ledger someone truncated to zero decisions.
+  const { ledger, run } = harness({ stages: [alwaysPass('one')], signals: [] });
+  const report = await run();
+  const entries = ledger.entries();
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].stage, 'seal');
+  assert.deepEqual(entries[0].summary, report.summary);
+});
+
+test('the seal is written last, after every lead has reached a terminal state', async () => {
+  const stages = [{ name: 'one', run: (input) => (input.id === 'a' ? refuse({ reason: 'NOPE' }) : pass({ output: input })) }];
+  const { ledger, run } = harness({ stages, signals: [{ id: 'a' }, { id: 'b' }] });
+  await run();
+  const entries = ledger.entries();
+  assert.equal(entries[entries.length - 1].stage, 'seal');
+  assert.equal(entries.filter((e) => e.stage === 'seal').length, 1, 'exactly one seal per run');
 });
