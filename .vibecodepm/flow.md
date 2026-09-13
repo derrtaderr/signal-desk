@@ -1,13 +1,13 @@
 ---
 name: signal-desk flow map
 read_by: vibecodepm:ship-check and the user-advocate walk before any signal-desk release, and any session adding a CLI verb or a stage
-milestone: M3
-status: current — matches the build at lane/signal-desk-m3
+milestone: M4
+status: current — matches the build at lane/signal-desk-m4
 date: 2026-09-13
-supersedes: the M2 flow map, whose "what the user cannot do" list this milestone shortened by one
+supersedes: the M3 flow map, whose "cannot run against live data" line this milestone removes
 ---
 
-# Flow map — signal-desk M3
+# Flow map — signal-desk M4
 
 What a first-time user does, what they see, and what happens when it goes wrong. The
 ship-check walks the build against this document, so a gap between this file and the build is
@@ -22,6 +22,14 @@ a README with no freshness test.
 a new path: it shows a run that already happened and cannot alter one. Four new refusal paths,
 all of them in the hostile corpus, three owned by enrich and one by the gate. And one line moved
 out of "what the user cannot do", which is the only kind of edit to that list worth making.
+
+**What M4 changed here.** A SECOND ENTRY POINT, `run --live`, and the important thing about it is
+how little of this map it alters: it joins the same happy path at the same stage sequence, parks at
+the same approval queue, and renders through the same dashboard. What is new is the setup a user
+has to get right BEFORE the first command works, so the new recovery paths are configuration
+refusals rather than pipeline refusals — and they are the paths a first-time live user will
+actually hit. Two new verbs' worth of surface (`run --live`, `dlq`), one new artifact
+(`inputs.json`), and the "cannot run against live data" line leaves the list.
 
 ## Who walks this
 
@@ -169,6 +177,68 @@ never reads as confirmation.
 instruction-shaped or markup-shaped text, at the moment those bytes entered, so a reader asking
 where a payload came from has somewhere to look.
 
+## Live mode, new in M4
+
+**The setup, and it is the whole difference for a walker.** Fixture mode's promise is that the
+first command works with no setup. Live mode cannot make that promise, so what it owes instead is
+that every way of getting the setup wrong fails IMMEDIATELY, NAMES THE VARIABLE, and leaves
+nothing behind. A half-run that then complains about its configuration would already have
+contacted a stranger's server on the strength of a run it could not finish.
+
+| State | What the user sees | Exit |
+|---|---|---|
+| No model key | `LIVE_KEY_MISSING`, naming both accepted variables and which wins | 2 |
+| No signal secret | `LIVE_SECRET_MISSING`, naming the variable and why it is not optional | 2 |
+| No signals directory | the path it looked for, plus `--signals <dir>` and a pointer to the README | 2 |
+| Empty signals directory | "holds no .json payload files, so there is nothing to run" | 2 |
+| Live run completes | the same run summary as fixture mode, plus a replay line and a dlq line if anything was dead-lettered | 0 |
+
+Both credential checks run BEFORE any file is read or any directory is created, and a test asserts
+the runs directory is still empty after a keyless invocation.
+
+### New per-lead states
+
+Every one is a refusal with its own code, and NONE of them falls back to a template or a fixture.
+That is the state a walker should try hardest to provoke, because a silent fallback would look
+like success: a plausible message nobody chose, on a path the operator believes is running a model,
+with the ledger recording PASS.
+
+| Code | What happened |
+|---|---|
+| `MODEL_UNAVAILABLE` | no model seam, an outage, a timeout, or a provider refusing the request |
+| `MODEL_REFUSED` | the model declined to write this message — a fact about the input, not an outage |
+| `MODEL_UNPARSEABLE` | something answered, in a shape this code cannot read |
+| `RUBRIC_UNAVAILABLE` | the judge could not be reached, and silence is not a pass |
+| `SOURCE_TIMEOUT` | a cited source did not answer in time |
+| `SOURCE_OVERSIZED` | a cited source answered past the byte cap |
+| `SOURCE_UNPARSEABLE` | a cited source answered 200 with something that is not a claim record |
+| `SOURCE_INSECURE` | a payload cited a plaintext URL |
+| `EVIDENCE_FUTURE_DATED` | a source claimed a record from the future |
+
+### The DLQ recovery path
+
+This is the one genuinely new LOOP in M4, and it is the live counterpart of the approval loop:
+
+```
+run --live   refuses a payload at ingest and retains its exact bytes
+dlq          lists what is retained, with the reason and the source file
+(fix)        the operator corrects their sender, or re-signs the retained bytes
+dlq --replay re-feeds the same message and the run proceeds
+```
+
+The recovery is proven against the SAME BYTES rather than a reconstruction of them, which is the
+only version of this loop that demonstrates the fix worked. A walker should check that the queue
+does NOT fill with downstream refusals: a gate refusal is a decision the ledger holds, and offering
+to replay it would invite somebody to retry it until it passed.
+
+### Replay, as a live user experiences it
+
+`replay <run>` on a live run needs no key and opens no socket, because the run captured what it
+observed into `inputs.json`. The user-visible promise is that handing somebody the run directory
+hands them the ability to re-derive every decision in it without your credentials. A walker should
+check the wording carefully: a fixture run is REPRODUCIBLE and a live run is REPLAYABLE FROM ITS
+CAPTURE, and the README says which is which rather than letting one word carry both.
+
 ## Recovery paths
 
 **Wrong verb.** `unknown verb: <x>` plus the usage text, exit 2.
@@ -224,23 +294,32 @@ lead. A run always reaches the end, so the ledger always carries the full pictur
 **A gate cannot evaluate.** It refuses with `GATE_ERROR`. A gate that cannot form an opinion has
 not granted permission. This is the fail-closed invariant and it is asserted by a test.
 
-## What the user cannot do in M3
+## What the user cannot do in M4
 
 Named here so the ship-check does not report them as gaps.
 
 Approve anything from the dashboard. Deliberate and permanent, per DESIGN.md's non-scope, not a
 milestone away. The page is a view of the ledger; decisions are made at the command line.
 
-Run against live data with real keys. M4. The rubric's seam exists and is exercised against
-recorded responses; what M4 adds is a fetcher and a key.
+Send anything, ever. Non-scope by design, in every milestone. The adapters render files, and live
+mode changed nothing about that: a live draft parks at the same approval queue.
 
-Send anything, ever. Non-scope by design, in every milestone. The adapters render files.
+Receive a webhook. There is no HTTP server, and its absence is argued rather than deferred — see
+src/live/signals.mjs. Live ingest reads files, which exercises every ingest discipline the design
+names. A user who wants an endpoint already has one and can write its body to a file.
 
-**One boundary worth naming because it is easy to mistake for a safeguard.** The prompt-injection
-fixture influences nothing, and the honest reason is structural rather than defensive: in fixture
-mode the draft stage is a template fill, so there is no interpreter for an instruction to
-instruct. M4 puts a model in that stage and ends that. The gate's injection rule is the part that
-survives the transition, and it is the part to press on when reviewing M4.
+Turn on earned autonomy. The hook exists so the code path is reviewable and it ships off, in live
+mode exactly as in fixture mode.
+
+**The boundary M3 named here, now closed.** M3 said the prompt-injection fixture influenced
+nothing, for a structural reason rather than a defensive one: fixture drafting is a template fill,
+so there was no interpreter for an instruction to instruct, and it said M4 would end that and that
+the gate's injection rule was the part that would survive the transition.
+
+It did survive, and the transition is done. Enrichment text now enters a real prompt, wrapped in a
+fence whose delimiter is derived from the claim content itself. The fence is defence in depth. The
+ENFORCEMENT is still the injection rule plus the gate, both of which run on the output, which is
+the same arrangement M3 described and now has something real to defend.
 
 ## The M2 gap, closed
 

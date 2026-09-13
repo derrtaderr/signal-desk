@@ -354,13 +354,142 @@ whatever order the filesystem listed them in.
 
 ## Fixture mode and live mode
 
-Fixture mode is the default and the only mode in this milestone. It reads recorded responses
-from `fixtures/recordings.json`, and the recorded fetcher throws on a URL it has no recording
-for rather than falling back to a live call. The corpus signals carry real HMAC signatures, so
-the signature path is genuinely exercised offline instead of skipped.
+Fixture mode is the default. It reads recorded responses from `fixtures/recordings.json`, and the
+recorded fetcher throws on a URL it has no recording for rather than falling back to a live call.
+The corpus signals carry real HMAC signatures, so the signature path is genuinely exercised
+offline instead of skipped.
 
-Live mode is M4. When it lands you bring your own keys through the environment. Nothing is
-hosted, and there is no telemetry and no account.
+Live mode brings your own key. Nothing is hosted, there is no telemetry and no account, and the
+tool still never sends mail.
+
+## Live mode
+
+```console
+$ export SIGNAL_DESK_ANTHROPIC_KEY=sk-ant-...     # or ANTHROPIC_API_KEY
+$ export SIGNAL_DESK_SIGNAL_SECRET=...            # what your sender signs with
+$ node bin/signal-desk.mjs run --live --signals ./signals
+```
+
+`SIGNAL_DESK_ANTHROPIC_KEY` takes precedence over `ANTHROPIC_API_KEY`, so you can point this tool
+at a different key from the one your shell already exports for everything else. With neither set,
+`--live` refuses immediately with `LIVE_KEY_MISSING`, before reading a file or creating a
+directory. With no signal secret it refuses with `LIVE_SECRET_MISSING`, because ingest skips
+signature verification when it has no secret and a live mode that quietly accepted whatever
+arrived would be worse than one that will not start.
+
+The model defaults to `claude-sonnet-5` and `SIGNAL_DESK_MODEL` overrides it.
+
+### What live mode changes, and what it does not
+
+Four switches, and they are the whole difference:
+
+| | fixture | live |
+|---|---|---|
+| signature | HMAC over the canonical payload | HMAC over the **raw bytes**, and the parse must agree with them |
+| enrichment | templated source URLs from config | the citation URLs **the payload names** |
+| drafting | template fill | the LLM, refusing rather than falling back |
+| rubric | recorded verdict | the LLM, through the same validator |
+
+Everything else is identical, and that list is the more important one. The same eight stages. The
+same deterministic gate rules, redaction passes, injection rule and claim-grounding check. The
+same approval queue and its hash binding. The same handoff adapter that writes and never sends.
+Earned autonomy, still off. **A live draft faces exactly the gates the fixture demo shows you**,
+which is what makes the keyless demo evidence about the live path rather than a separate story.
+
+### There is no server
+
+Live mode reads files:
+
+```
+signals/0001.json       the exact bytes your sender transmitted
+signals/0001.json.sig   the hex HMAC of those bytes
+```
+
+The signature sits beside the payload rather than inside it, because a signature inside the thing
+it signs has to be excised before verification, and excising is where byte-exactness dies.
+
+A server would be a listening socket, a deployment story, a TLS story and an authentication
+surface, all of which are hosted-tool concerns. The ingest discipline this design cares about —
+HMAC over raw bytes, a replay window, idempotency, a dead-letter queue — are properties of
+*verifying* a payload rather than of *receiving* one, and files exercise all four. If you want a
+webhook endpoint you already have one; the honest interface between it and this tool is a file.
+
+Each payload names its own evidence, so no vendor account is involved:
+
+```json
+{
+  "id": "sig-1",
+  "source": "your-pipeline",
+  "received_at": "2026-03-01T09:00:00.000Z",
+  "payload": {
+    "company": { "name": "Acme Robotics", "domain": "acme.example.com" },
+    "contact": { "name": "Dana Ruiz", "email": "dana@acme.example.com", "title": "VP Revenue Operations" },
+    "intent": { "page": "/pricing", "visits": 4 },
+    "sources": ["https://your-enrichment.example.com/company/acme.example.com"],
+    "identity_source": "https://your-people-api.example.com/dana@acme.example.com"
+  }
+}
+```
+
+Each source answers `{ "as_of": "<instant>", "claims": { ... } }` over HTTPS. Undated, stale,
+future-dated, oversized, unparseable and plaintext-cited responses are each refused with their own
+reason code.
+
+### Trust boundaries
+
+Stated plainly, because "bring your own key" is not the same as "nothing leaves the machine".
+
+**What is sent to the model provider.** The company name, the contact's **first** name, their
+title, the page they visited, and the cited claims with their citation URLs. That is all.
+
+**What is never sent to the model provider.** The recipient's email address. Writing the message
+does not require it, so it stays in this process and the draft's `to` field is filled in locally.
+Also never sent: your signal secret, your ledger, and any other lead's data.
+
+**What is fetched.** Exactly the URLs a payload cited, over HTTPS only, with a timeout, bounded
+retries, and a size cap. No redirects are followed, because a redirect is a source sending the run
+somewhere it did not choose to cite.
+
+**What is never sent anywhere.** Your keys. They live in one closure, attach to one header, and
+appear in no ledger entry, no refusal detail, no capture and no artifact. A provider's own 401 can
+echo a credential back at you, so every message relayed from outside is scrubbed first.
+`test/key-hygiene.test.mjs` runs a live-shaped flow with a canary key and greps every file the run
+writes, including the dashboard.
+
+**And nothing is ever sent to your prospect.** Live mode ends where fixture mode ends: at the
+approval queue.
+
+### A live run replays itself
+
+A fixture run is **reproducible** — every input is in this repo, so the bytes match on any machine
+forever. A live run is **replayable from its own capture**, which is a weaker and more useful
+promise. It read a real clock and real strangers' servers, so it writes down everything it
+observed into `runs/<run-id>/inputs.json`:
+
+```console
+$ node bin/signal-desk.mjs replay run-abc123456789
+```
+
+That needs no key and opens no socket. Hand somebody the run directory and they can re-derive
+every decision in it without your credentials.
+
+### When ingest cannot accept something
+
+```console
+$ node bin/signal-desk.mjs dlq
+$ node bin/signal-desk.mjs dlq --replay
+```
+
+The dead-letter queue holds payloads ingest **refused** — malformed, unsigned, wrongly signed,
+outside the replay window — plus files that never parsed as JSON at all. Each one keeps its exact
+bytes, so a fix at the sender can be proven against the same message rather than a reconstruction
+of it.
+
+It deliberately does not hold leads refused *downstream*. The ledger already records those
+decisions completely, and retaining a payload whose gate refusal was correct invites somebody to
+replay it until it passes. The line is between "we could not accept this" and "we accepted it and
+said no", and only the first has a fix at the sender. Duplicates are excluded too, since a dead
+letter for a successful no-op is an invitation to redeliver.
 
 ## What this milestone is
 
@@ -382,8 +511,15 @@ One of those four needed no new rule at all. The hallucination-bait lead is caug
 discipline M1 built and no fixture had ever reached, and finding that out was worth more than
 another gate would have been.
 
-Deliberately not here. Live mode and real keys are M4. Sending is non-scope in every milestone,
-and approving from the dashboard is non-scope permanently rather than pending.
+M4 is live mode: real HTTPS enrichment, real LLM drafting and judging, HMAC over raw bytes, the
+dead-letter queue M1 registered as absent, and a capture that makes a live run replayable offline.
+It opened by closing three findings the M3 review left, each before any live data could reach the
+code they governed: a fieldless identity record used to read as CONFIRMED, a source could assert
+any freshness it liked, and a hostile span quoted into the ledger could smuggle a third party's
+data past the redaction rule.
+
+Deliberately not here. No HTTP server, argued rather than deferred. Sending is non-scope in every
+milestone, and approving from the dashboard is non-scope permanently rather than pending.
 
 The M1 limitation that a test used to pin is closed, and the test was flipped rather than
 deleted. See `test/adversarial.test.mjs`.
@@ -418,10 +554,12 @@ $ node scripts/make-fixtures.mjs
 
 ## Design
 
-`docs/DESIGN.md` is the approved design. `docs/M3-SPEC.md` is what this milestone built,
-including the stage-ownership argument for each hostile catch, the dashboard's contract and its
-escaping rule, and the divergences. `docs/M2-SPEC.md` and `docs/M1-SPEC.md` are the previous
-milestones, each carrying its own addendum on what the implementation taught.
+`docs/DESIGN.md` is the approved design. `docs/M4-SPEC.md` is what this milestone built, including
+the two transport seams, the recordings-in-the-run-id decision, the DLQ boundary and the
+no-server argument. `docs/M3-SPEC.md` is the milestone before it,
+carrying the stage-ownership argument for each hostile catch, the dashboard's contract and its
+escaping rule. `docs/M2-SPEC.md` and `docs/M1-SPEC.md` are the earlier ones, each with its own
+addendum on what the implementation taught.
 `docs/ADAPTERS.md` is the sender adapter contract.
 
 ### Known boundaries

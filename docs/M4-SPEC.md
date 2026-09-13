@@ -364,3 +364,95 @@ mentioned. One line, and the README's verified block moves with it in the same c
 - **No-socket discipline** — `test/no-network.test.mjs`, new in M4.
 - **Composition level** — the CLI driven as a subprocess, because every prior lane's blocker
   lived there rather than in a unit.
+
+---
+
+# Addendum — what the implementation taught
+
+Written after the code. **Everything above this line is the spec as written before any live source
+existed and is unedited**, which is the convention M1 through M3 followed: a spec that is quietly
+corrected to match what got built stops being evidence of what was intended.
+
+## Four decisions the spec got right and one it got wrong
+
+The seam split (§4), the no-fallback rule (§5), recordings-in-the-run-id (§7) and the DLQ boundary
+(§8) all survived implementation unchanged.
+
+**What §6 got wrong was small and mattered.** It said the live fetcher would stamp each response
+with the fetch instant, and the obvious reading — the one the first implementation took — was that
+the instant came from the run clock. That is wrong, and the way it is wrong is instructive.
+
+The run clock is not an ordinary clock. It is a **recorded sequence**: every instant it issues is
+captured so a replay can reissue them in order and stamp a byte-identical ledger. A live run taking
+one reading per fetch therefore consumed readings the RECORDED fetcher does not consume on replay,
+so every later reading shifted one position and the replayed ledger stamped its enrich entry with an
+instant the live run had used for something else.
+
+It only showed when two consecutive wall-clock reads fell in different milliseconds, so it passed on
+an idle machine and failed under load: an intermittent failure in the one check that proves
+replayability. The fix is the distinction rather than a tolerance — the run clock stamps LEDGER
+ENTRIES, `fetched_at` is TRANSPORT METADATA captured with the response, and a replay reads it back
+from the capture. The reproduction (a few milliseconds of delay in the fake transport) is kept as a
+permanent regression guard, because without it the test passes while the bug is present, which is
+exactly how the bug survived being written.
+
+**The general lesson, worth more than the bug:** a shared ordered resource that looks like an
+ordinary clock will be used like one. Two readings, one recorded and one not, is a failure mode no
+type system catches and no review notices.
+
+## Two more findings, both from composition-level tests
+
+Both came from driving the CLI rather than a unit, which is where every prior lane's blocker in this
+repo lived.
+
+1. **`liveConfig` inherited the fixture `identitySource`.** A live run would have tried to resolve
+   `people.test` on every lead and then reported IDENTITY_UNVERIFIED as though a real source had
+   declined to answer — a false negative dressed as evidence. Caught by a test asserting no fixture
+   domain is contacted. The fix made the person-level source come from the payload too, which is
+   what §6 should have said in the first place: if the claim sources come from the signal, so does
+   the identity source.
+
+2. **The loader's `source_file` field broke the raw-bytes parse-agreement check.** It failed CLOSED,
+   as SIGNATURE_INVALID on every correctly signed signal, which is the good direction and worth
+   recording as such: a field left off that list is loud and immediate rather than a quiet
+   acceptance of something unverified.
+
+## The key-hygiene test found a real leak, which is the argument for writing it
+
+A source whose error body echoed the key put it into an enrich detail, then the ledger, then
+`dashboard.html` — the artifact somebody opens in a browser and shares. The model transport already
+scrubbed its own key. The evidence transport was relaying upstream text verbatim **because it had
+nothing to scrub with, and correctly so: it never sees a key and must not.**
+
+The fix is `secretScrubber`, built by the CLI (the one place holding both secrets) and handed to
+both transports. The distinction that makes it safe: a transport given the scrubber does not HOLD a
+secret, it holds the ability to REMOVE one.
+
+This is the case for hygiene-class tests in general. Nobody would have found it by reading, because
+every individual module was behaving correctly. It is only visible from the outside, by looking at
+what ended up in the files.
+
+## Divergences added during implementation
+
+Beyond the four registered above the line:
+
+5. **The live person-level source comes from the signal**, not from config, for the reasons §6 gave
+   about claim sources. The spec did not say, and the omission produced finding 1.
+6. **`SIGNAL_DESK_SIGNAL_SECRET` is mandatory in live mode.** The spec's §11 covered the model key
+   and said nothing about the HMAC secret. Ingest skips signature verification when it has no
+   secret, which is right for a pipeline nobody gave one and catastrophic for a live mode that would
+   then accept whatever arrived, so live mode refuses to start without it.
+7. **The keyed smoke test is double-gated**, on `SIGNAL_DESK_LIVE_SMOKE=1` as well as a key. §10
+   argued this; recording it here because it is a real difference from "skipped unless a key is
+   present" as the brief phrased it, and the reason is that an ambient key is not a choice.
+
+## What M4 does not close
+
+- **A source that lies about `as_of` still defeats the freshness rule.** §2 says so plainly and the
+  code says so plainly. Nothing in a plain GET can fix it.
+- **The model's `claim_refs` are a self-report.** The gate verifies them and `prose_grounding`
+  catches what they omit, which is the design. It is not the same as knowing which claims the model
+  actually used.
+- **A live run is not byte-reproducible**, only replayable from its capture. Two runs over the same
+  payload produce different ids by construction, because the clock start is an input.
+- **No approval expiry.** Carried from M2, still pinned by the tripwire M3 added.
