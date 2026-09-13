@@ -103,9 +103,10 @@ export const defaultConfig = {
     // The earned-autonomy hook. It exists so the code path is real and reviewable, and it
     // ships off. Turning it on is an explicit, separate decision with its own consequences.
     autonomy: { enabled: false },
-    // Populated by the runner from fixtures/approvals.json. Recorded human decisions, an M1
-    // stand-in for the approval workflow that M2 builds.
-    approvals: {},
+    // Populated by the runner from fixtures/approvals.json plus any decisions a human recorded
+    // with `approve` / `reject`. A LIST of records, each bound to a draft-content hash; the
+    // M1 lead-keyed map is refused outright rather than read as empty. See src/stages/queue.mjs.
+    approvals: [],
   },
 
   handoff: {

@@ -174,3 +174,22 @@ test('the README scripts it tells you to run are real npm scripts', () => {
     assert.ok(README.includes(`npm run ${script}`) || README.includes(`npm ${script}`));
   }
 });
+
+test('the usage text advertises no invocation that fails in a fresh clone', async () => {
+  // There is no install step, so `signal-desk` is not on PATH. Any instruction printed in the
+  // bare form sends a reader straight into "command not found", which is how M1's next-step
+  // hint went wrong.
+  const { USAGE } = await import('../src/cli.mjs');
+  // An INVOCATION is the tool name followed by a verb. The first line of the usage text is a
+  // title that happens to start with the tool's name, which is not an instruction to type.
+  const verbs = ['run', 'queue', 'approve', 'reject', 'explain', 'replay'];
+  for (const line of USAGE.split('\n')) {
+    const trimmed = line.trim();
+    for (const verb of verbs) {
+      assert.ok(
+        !trimmed.startsWith(`signal-desk ${verb}`),
+        `usage advertises a bare invocation that will not run: "${trimmed}"`,
+      );
+    }
+  }
+});
