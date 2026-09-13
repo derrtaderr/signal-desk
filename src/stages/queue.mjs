@@ -47,6 +47,30 @@ function decisionsIn(config) {
   );
 }
 
+// The one ledger entry in this pipeline whose actor is a person, built in one place so an
+// approval and a rejection read alike.
+//
+// It carries `by`, `at`, `decision` and `draft_hash` as FIELDS as well as inside the English
+// detail, and the duplication is deliberate. The seal's `head` duplicates its own `prev` link
+// for exactly this reason: a consumer should read a field rather than parse prose. The dashboard
+// renders the human decisions from the ledger and nothing else, so a renderer reaching into a
+// sentence with a regex to find who approved something would be a second and weaker account of
+// a fact the entry could simply state.
+function decisionEntry(bound, draftHash, verdict, code, verb) {
+  return {
+    verdict,
+    actor: 'human',
+    reason_codes: [code],
+    evidence_refs: [`draft:${draftHash}`],
+    detail: `${bound.by} ${verb} draft ${draftHash} at ${bound.at}`,
+    decision: bound.decision,
+    draft_hash: draftHash,
+    by: bound.by,
+    at: bound.at,
+    ...(bound.note === undefined ? {} : { note: bound.note }),
+  };
+}
+
 export const queue = {
   name: 'queue',
 
@@ -106,15 +130,7 @@ export const queue = {
         return pass({
           output: { ...parked, approval: bound },
           evidence_refs: [`draft:${draftHash}`],
-          entries: [
-            {
-              verdict: 'PASS',
-              actor: 'human',
-              reason_codes: ['APPROVED_BY_HUMAN'],
-              evidence_refs: [`draft:${draftHash}`],
-              detail: `${bound.by} approved draft ${draftHash} at ${bound.at}`,
-            },
-          ],
+          entries: [decisionEntry(bound, draftHash, 'PASS', 'APPROVED_BY_HUMAN', 'approved')],
         });
       }
 
@@ -124,15 +140,7 @@ export const queue = {
           detail: `${bound.by} rejected draft ${draftHash} at ${bound.at}${bound.note ? `: ${bound.note}` : ''}`,
           output: { ...parked, approval: bound },
           evidence_refs: [`draft:${draftHash}`],
-          entries: [
-            {
-              verdict: 'REFUSE',
-              actor: 'human',
-              reason_codes: ['REJECTED_BY_HUMAN'],
-              evidence_refs: [`draft:${draftHash}`],
-              detail: `${bound.by} rejected draft ${draftHash} at ${bound.at}`,
-            },
-          ],
+          entries: [decisionEntry(bound, draftHash, 'REFUSE', 'REJECTED_BY_HUMAN', 'rejected')],
         });
       }
 
