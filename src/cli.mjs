@@ -56,8 +56,16 @@ Usage:
   node bin/signal-desk.mjs reject <id>    Reject a parked draft, with an optional --note
   node bin/signal-desk.mjs explain <lead> Print the full decision trail for one lead
   node bin/signal-desk.mjs replay <run>   Re-execute a run and verify its ledger still matches
-  node bin/signal-desk.mjs dashboard     Render a run's ledger as one self-contained HTML file
+  node bin/signal-desk.mjs dashboard      Render a run's ledger as one self-contained HTML file
   node bin/signal-desk.mjs dlq            List payloads live ingest could not accept, and replay them
+
+Flags, per verb. Anything else is refused rather than ignored, so no invocation can quietly
+become a different one than you typed. Write them as "--flag value", never "--flag=value".
+
+  run       --live, --signals <dir>
+  approve   --by <name>, --note <text>
+  reject    --by <name>, --note <text>
+  dlq       --replay
 
 There is no install step, so the invocation is spelled out in full. A bare signal-desk is
 not on PATH in a fresh clone.
@@ -72,8 +80,12 @@ This tool never sends mail; handoffs are written as dry-run JSON.
 
 Live mode brings your own key. Export SIGNAL_DESK_ANTHROPIC_KEY (or ANTHROPIC_API_KEY)
 and SIGNAL_DESK_SIGNAL_SECRET, put signed payload files in ./signals/, and every draft
-faces exactly the gates the fixture demo shows. A live run captures what it observed, so
-it replays offline with no key at all. See the live-mode section of the README.
+faces exactly the gates the fixture demo shows.
+
+A live run captures what it observed, so it replays with no model key. Replaying also
+verifies every payload signature when SIGNAL_DESK_SIGNAL_SECRET is set; without it, the
+chain and the seal are verified and replay says plainly what it did not check. The capture
+stores a fingerprint of that secret, never the secret itself.
 `;
 
 function runsDir(env, cwd) {

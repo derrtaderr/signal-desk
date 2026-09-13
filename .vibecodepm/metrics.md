@@ -125,9 +125,16 @@ they are refusals of the OPERATOR's configuration rather than of a lead.
 | **A live judge is no weaker than a recorded one** | M2's fail-closed rules are driven through the live path against the shared validator | `test/rubric.test.mjs` |
 | **A live run replays from its own capture** | a real subprocess replays it to identical bytes with no key exported, with the timing forced so the check is deterministic | `test/live-cli.test.mjs` |
 | **The DLQ recovers rather than accumulates** | a dead letter keeps its exact bytes and `dlq --replay` re-feeds the same message | `test/live-cli.test.mjs` |
+| **The live approval loop closes** | run --live -> approve -> run --live reaches handoff and writes an artifact | `test/live-cli.test.mjs` |
+| **No credential is written down** | a canary for EACH secret is grepped across every written byte, `inputs.json` included, with a planted-value control per canary | `test/key-hygiene.test.mjs` |
+| **No invocation silently becomes another** | unknown and `--flag=value` forms exit 2; every accepted flag still works | `test/live-cli.test.mjs` |
+| **Replay claims only what it checked** | three outcomes by what the replayer has, each asserted separately | `test/live-secret.test.mjs` |
 | **No fixture domain is contacted in live mode** | the fetched URL list is asserted against the payload's own citations | `test/live-cli.test.mjs` |
 
-**That last row exists because it caught something.** `liveConfig` inherited the fixture identity
+**Two of those rows exist because they caught something.** The credential row caught a plaintext
+signing secret in the shareable capture, which had passed 830 tests because the hygiene test set a
+canary secret and only ever grepped for the model key — a hygiene test only finds the values it names.
+And the fixture-domain row caught this: `liveConfig` inherited the fixture identity
 source and would have tried to resolve a reserved test domain on every live lead, then reported
 IDENTITY_UNVERIFIED as though a real source had declined to answer. A composition-level assertion
 found it; no unit test would have.
