@@ -1,0 +1,21 @@
+{
+  "id": "sig-9008",
+  "source": "rb2b",
+  "received_at": "2026-03-01T09:00:15.000Z",
+  "payload": {
+    "company": {
+      "name": "Cinder Field",
+      "domain": "cinder.test"
+    },
+    "contact": {
+      "name": "Wren Ito",
+      "email": "wren@cinder.test",
+      "title": "VP Customer Operations"
+    },
+    "intent": {
+      "page": "/demo",
+      "visits": 3
+    }
+  },
+  "signature": "d00175aa1f3f6f8031e66364154beacda765cd96df32c468b3a2ad51aa27f396"
+}

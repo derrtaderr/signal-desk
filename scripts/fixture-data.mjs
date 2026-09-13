@@ -159,6 +159,24 @@ const meridian = signed({
   },
 });
 
+// Hostile fixture 8: a source that answers perfectly with a record that expired.
+//
+// The directory knows Cinder Field. It answers 200, in the right shape, with a headcount and an
+// industry. The record is dated April 2025, eleven months before this run's clock, and headcount
+// is the single fastest-rotting field in B2B data. A pipeline that reads a 200 as freshness
+// would state an expired number as a current fact, with a citation attached to make it look
+// checked. Nothing else answers for this company, so nothing survives the freshness window.
+const cinder = signed({
+  id: 'sig-9008',
+  source: 'rb2b',
+  received_at: '2026-03-01T09:00:15.000Z',
+  payload: {
+    company: { name: 'Cinder Field', domain: 'cinder.test' },
+    contact: { name: 'Wren Ito', email: 'wren@cinder.test', title: 'VP Customer Operations' },
+    intent: { page: '/demo', visits: 3 },
+  },
+});
+
 const signals = [
   ['0001-acme.json', acme],
   ['0002-northwind.json', northwind],
@@ -171,65 +189,54 @@ const signals = [
   ['9005-ungrounded-prose.json', orbital],
   ['9006-same-contact-new-id.json', acmeAgain],
   ['9007-wrong-person-match.json', meridian],
+  ['9008-decayed-enrichment.json', cinder],
 ];
 
 // --- recordings ----------------------------------------------------------------------
+//
+// Every claim response carries an `as_of`. Undated evidence is unusable as of M3, so a corpus
+// containing an undated recording would be a corpus that cannot demonstrate its own rule.
+// See src/stages/enrich.mjs.
+
+// Nine days before the fixture clock, comfortably inside the 90 day freshness window.
+const FRESH = '2026-02-20T00:00:00.000Z';
+
+function sourced(claims, as_of = FRESH) {
+  return { status: 200, body: { as_of, claims } };
+}
 
 const companySources = {
-  'https://directory.test/company/acme.test': {
-    status: 200,
-    body: { claims: { employee_count: 240, industry: 'industrial robotics' } },
-  },
-  'https://newsroom.test/acme.test': {
-    status: 200,
-    body: { claims: { funding_stage: 'series B' } },
-  },
-  'https://directory.test/company/northwind.test': {
-    status: 200,
-    body: { claims: { employee_count: 180, industry: 'freight logistics' } },
-  },
-  'https://directory.test/company/tiny.test': {
-    status: 200,
-    body: { claims: { employee_count: 6, industry: 'consulting' } },
-  },
-  'https://directory.test/company/globex.test': {
-    status: 200,
-    body: { claims: { employee_count: 420, industry: 'industrial manufacturing' } },
-  },
-  'https://newsroom.test/globex.test': {
-    status: 200,
-    body: { claims: { funding_stage: 'public' } },
-  },
+  'https://directory.test/company/acme.test': sourced({ employee_count: 240, industry: 'industrial robotics' }),
+  'https://newsroom.test/acme.test': sourced({ funding_stage: 'series B' }),
+  'https://directory.test/company/northwind.test': sourced({ employee_count: 180, industry: 'freight logistics' }),
+  'https://directory.test/company/tiny.test': sourced({ employee_count: 6, industry: 'consulting' }),
+  'https://directory.test/company/globex.test': sourced({ employee_count: 420, industry: 'industrial manufacturing' }),
+  'https://newsroom.test/globex.test': sourced({ funding_stage: 'public' }),
 
   // A scraped directory page whose industry field carries a phone number. Real directories do
   // this constantly, and a template that interpolates the field ships the number with it.
-  'https://directory.test/company/vertex.test': {
-    status: 200,
-    body: {
-      claims: {
-        employee_count: 320,
-        industry: 'freight operations, desk line 415-555-0142',
-      },
-    },
-  },
+  'https://directory.test/company/vertex.test': sourced({
+    employee_count: 320,
+    industry: 'freight operations, desk line 415-555-0142',
+  }),
 
   // Clean data. This lead's draft fails on judgement, not on any rule.
-  'https://directory.test/company/halcyon.test': {
-    status: 200,
-    body: { claims: { employee_count: 260, industry: 'developer tooling' } },
-  },
+  'https://directory.test/company/halcyon.test': sourced({ employee_count: 260, industry: 'developer tooling' }),
 
   // An industry string smuggling a funding claim. Note there is deliberately NO newsroom
   // recording for orbital.test, so no cited funding_stage claim exists to support it.
-  'https://directory.test/company/orbital.test': {
-    status: 200,
-    body: {
-      claims: {
-        employee_count: 210,
-        industry: 'orbital logistics software, now scaling after their Series C',
-      },
-    },
-  },
+  'https://directory.test/company/orbital.test': sourced({
+    employee_count: 210,
+    industry: 'orbital logistics software, now scaling after their Series C',
+  }),
+
+  // The decayed record. A perfect 200 in the right shape, dated eleven months before this run.
+  // It is the only source that answers for cinder.test, so nothing survives the window and the
+  // lead has no evidence at all rather than merely less of it.
+  'https://directory.test/company/cinder.test': sourced(
+    { employee_count: 90, industry: 'field service software' },
+    '2025-04-02T00:00:00.000Z',
+  ),
 };
 
 // --- person records -------------------------------------------------------------------
@@ -244,7 +251,7 @@ const companySources = {
 function person({ email, name, domain }) {
   return {
     status: 200,
-    body: { identity: { name, email, company_domain: domain } },
+    body: { as_of: FRESH, identity: { name, email, company_domain: domain } },
   };
 }
 
@@ -291,6 +298,14 @@ const people = {
     email: 'jordan@meridian.test',
     name: 'Jordan Blake',
     domain: 'harborline.test',
+  }),
+
+  // Fresh and correct, so the decayed-evidence fixture fails for exactly one reason. The person
+  // is who the signal says; what is expired is everything known about the company.
+  'https://people.test/wren@cinder.test': person({
+    email: 'wren@cinder.test',
+    name: 'Wren Ito',
+    domain: 'cinder.test',
   }),
 };
 

@@ -45,12 +45,20 @@ function makeCtx(recordings, enrichConfig = {}) {
 // config above so the tests that predate it keep asserting what they were written to assert.
 const withIdentity = { identitySource: 'https://people.test/{email}' };
 
+// Every recording carries an as_of. Undated evidence is unusable as of M3, so a test corpus
+// without dates would be testing the decay rule rather than whatever each test is about.
 const recordings = {
   [DIRECTORY]: {
     status: 200,
-    body: { claims: { employee_count: 240, industry: 'industrial robotics' } },
+    body: {
+      as_of: '2026-02-20T00:00:00.000Z',
+      claims: { employee_count: 240, industry: 'industrial robotics' },
+    },
   },
-  [NEWSROOM]: { status: 200, body: { claims: { funding_stage: 'series B' } } },
+  [NEWSROOM]: {
+    status: 200,
+    body: { as_of: '2026-02-20T00:00:00.000Z', claims: { funding_stage: 'series B' } },
+  },
 };
 
 test('enrich fetches every configured source with the domain substituted in', async () => {
@@ -122,6 +130,142 @@ test('enrich passes the lead through untouched alongside the claims it added', a
   assert.equal(output.contact.email, 'dana@acme.test');
 });
 
+// --- evidence decay, the stale-record catch -------------------------------------------
+//
+// A source that answers 200 with a well-formed record that was true two years ago. Headcount,
+// funding stage and role are exactly the fields that rot. See docs/M3-SPEC.md part 1 (b).
+
+const FRESH = '2026-02-20T00:00:00.000Z'; // 9 days before the fixture clock
+const STALE = '2025-04-02T00:00:00.000Z'; // 333 days before it
+
+function dated(as_of, claims) {
+  return { status: 200, body: { as_of, claims } };
+}
+
+test('a source whose record is inside the freshness window is a normal citation', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ [DIRECTORY]: dated(FRESH, { employee_count: 240 }) }),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(result.output.citations, [DIRECTORY]);
+  assert.ok(!result.entries.some((e) => e.reason_codes?.includes('EVIDENCE_DECAYED')));
+});
+
+test('a source whose record is older than the window is dropped, and the drop is recorded', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({
+      [DIRECTORY]: dated(STALE, { employee_count: 240 }),
+      [NEWSROOM]: dated(FRESH, { funding_stage: 'series B' }),
+    }),
+  );
+  assert.equal(result.status, 'PASS', 'the fresh source still stands');
+  assert.deepEqual(result.output.citations, [NEWSROOM]);
+  assert.ok(
+    !result.output.claims.some((c) => c.field === 'employee_count'),
+    'the decayed claim is gone rather than downgraded and left lying around',
+  );
+  const entry = result.entries.find((e) => e.reason_codes?.includes('EVIDENCE_DECAYED'));
+  assert.ok(entry, 'the drop leaves a trail');
+  assert.match(entry.detail, /directory\.test/);
+});
+
+test('a source carrying no as_of at all is unusable, not assumed fresh', async () => {
+  // The load-bearing row, and it is M2's redaction lesson applied to time. A single pass cannot
+  // tell "there was no PII" apart from "my pattern did not match", and a response with no as_of
+  // cannot tell "fetched fresh" apart from "read out of a cache in 2019". Trusting the undated
+  // case would put the whole rule at the mercy of a source that declines to date itself, which
+  // is the cheapest possible bypass.
+  const result = await enrich.run(
+    lead(),
+    makeCtx({
+      [DIRECTORY]: { status: 200, body: { claims: { employee_count: 240 } } },
+      [NEWSROOM]: dated(FRESH, { funding_stage: 'series B' }),
+    }),
+  );
+  assert.deepEqual(result.output.citations, [NEWSROOM]);
+  const entry = result.entries.find((e) => e.reason_codes?.includes('EVIDENCE_UNDATED'));
+  assert.ok(entry, 'an undated source is named as undated, not as decayed');
+  assert.match(entry.detail, /directory\.test/);
+});
+
+test('an unparseable as_of is treated as undated rather than guessed at', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ [DIRECTORY]: dated('last tuesday', { employee_count: 240 }) }),
+  );
+  assert.equal(result.status, 'REFUSE');
+  assert.ok(result.entries.some((e) => e.reason_codes?.includes('EVIDENCE_UNDATED')));
+});
+
+test('when every answering source was dropped for age, enrich REFUSES with EVIDENCE_DECAYED', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ [DIRECTORY]: dated(STALE, { employee_count: 240 }) }),
+  );
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['EVIDENCE_DECAYED']);
+  assert.match(result.detail, /stale|decayed|expired|old/i);
+});
+
+test('when nothing answered at all, the refusal stays NO_CITED_CLAIMS', async () => {
+  // Two different events deserve two codes, the same argument ingest used for DUPLICATE_SIGNAL
+  // versus DUPLICATE_LEAD. "Every source we have is out of date" and "no source knows this
+  // company" send a reader somewhere different.
+  const result = await enrich.run(lead(), makeCtx({}));
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['NO_CITED_CLAIMS']);
+});
+
+test('the freshness window is configurable, and widening it rescues a decayed source', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ [DIRECTORY]: dated(STALE, { employee_count: 240 }) }, { maxEvidenceAgeMs: 4e10 }),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(result.output.citations, [DIRECTORY]);
+});
+
+test('the freshness check reads the clock without advancing it', async () => {
+  // A validation check that moves the clock makes the ledger's instants depend on how many
+  // branches a stage took, which is the rule ingest's replay window already follows.
+  const ledger = new Ledger();
+  const clock = fixtureClock({ start: '2026-03-01T09:00:00.000Z', stepMs: 1000 });
+  const ctx = createContext({
+    ledger,
+    clock,
+    fetch: recordedFetcher({ [DIRECTORY]: dated(FRESH, { employee_count: 240 }) }),
+    config: { mode: 'fixture', enrich: { sources: ['https://directory.test/company/{domain}'] } },
+    run_id: 'run-test',
+  });
+
+  const before = clock.peek();
+  await enrich.run(lead(), ctx);
+  assert.equal(clock.peek(), before);
+});
+
+test('a decayed identity record leaves the lead unverified rather than contradicted', async () => {
+  // An expired person record cannot contradict anything. It is the same state as having no
+  // identity evidence, which is the state every lead was in before M3.
+  const result = await enrich.run(
+    lead(),
+    makeCtx(
+      {
+        [DIRECTORY]: dated(FRESH, { employee_count: 240 }),
+        [PERSON]: {
+          status: 200,
+          body: { as_of: STALE, identity: { name: 'Someone Else', email: 'dana@acme.test', company_domain: 'elsewhere.test' } },
+        },
+      },
+      { identitySource: 'https://people.test/{email}' },
+    ),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.ok(result.entries.some((e) => e.reason_codes?.includes('IDENTITY_UNVERIFIED')));
+  assert.ok(!result.entries.some((e) => e.reason_codes?.includes('IDENTITY_CONTRADICTED')));
+});
+
 // --- identity verification, the wrong-person catch -----------------------------------
 //
 // The signal names a contact. Vendor-side identity resolution is probabilistic, so the human
@@ -132,6 +276,7 @@ function personRecord(overrides = {}) {
   return {
     status: 200,
     body: {
+      as_of: '2026-02-20T00:00:00.000Z',
       identity: {
         name: 'Dana Ruiz',
         email: 'dana@acme.test',

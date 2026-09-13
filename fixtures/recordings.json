@@ -2,6 +2,7 @@
   "https://directory.test/company/acme.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "claims": {
         "employee_count": 240,
         "industry": "industrial robotics"
@@ -11,6 +12,7 @@
   "https://newsroom.test/acme.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "claims": {
         "funding_stage": "series B"
       }
@@ -19,6 +21,7 @@
   "https://directory.test/company/northwind.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "claims": {
         "employee_count": 180,
         "industry": "freight logistics"
@@ -28,6 +31,7 @@
   "https://directory.test/company/tiny.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "claims": {
         "employee_count": 6,
         "industry": "consulting"
@@ -37,6 +41,7 @@
   "https://directory.test/company/globex.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "claims": {
         "employee_count": 420,
         "industry": "industrial manufacturing"
@@ -46,6 +51,7 @@
   "https://newsroom.test/globex.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "claims": {
         "funding_stage": "public"
       }
@@ -54,6 +60,7 @@
   "https://directory.test/company/vertex.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "claims": {
         "employee_count": 320,
         "industry": "freight operations, desk line 415-555-0142"
@@ -63,6 +70,7 @@
   "https://directory.test/company/halcyon.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "claims": {
         "employee_count": 260,
         "industry": "developer tooling"
@@ -72,15 +80,27 @@
   "https://directory.test/company/orbital.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "claims": {
         "employee_count": 210,
         "industry": "orbital logistics software, now scaling after their Series C"
       }
     }
   },
+  "https://directory.test/company/cinder.test": {
+    "status": 200,
+    "body": {
+      "as_of": "2025-04-02T00:00:00.000Z",
+      "claims": {
+        "employee_count": 90,
+        "industry": "field service software"
+      }
+    }
+  },
   "https://people.test/dana@acme.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "identity": {
         "name": "Dana Ruiz",
         "email": "dana@acme.test",
@@ -91,6 +111,7 @@
   "https://people.test/sam@northwind.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "identity": {
         "name": "Sam Patel",
         "email": "sam@northwind.test",
@@ -101,6 +122,7 @@
   "https://people.test/alex@tiny.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "identity": {
         "name": "Alex Doe",
         "email": "alex@tiny.test",
@@ -111,6 +133,7 @@
   "https://people.test/robin@globex.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "identity": {
         "name": "Robin Vale",
         "email": "robin@globex.test",
@@ -121,6 +144,7 @@
   "https://people.test/morgan@vertex.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "identity": {
         "name": "Morgan Hale",
         "email": "morgan@vertex.test",
@@ -131,6 +155,7 @@
   "https://people.test/priya@halcyon.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "identity": {
         "name": "Priya Raman",
         "email": "priya@halcyon.test",
@@ -141,6 +166,7 @@
   "https://people.test/chris@orbital.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "identity": {
         "name": "Chris Okafor",
         "email": "chris@orbital.test",
@@ -151,10 +177,22 @@
   "https://people.test/jordan@meridian.test": {
     "status": 200,
     "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
       "identity": {
         "name": "Jordan Blake",
         "email": "jordan@meridian.test",
         "company_domain": "harborline.test"
+      }
+    }
+  },
+  "https://people.test/wren@cinder.test": {
+    "status": 200,
+    "body": {
+      "as_of": "2026-02-20T00:00:00.000Z",
+      "identity": {
+        "name": "Wren Ito",
+        "email": "wren@cinder.test",
+        "company_domain": "cinder.test"
       }
     }
   }

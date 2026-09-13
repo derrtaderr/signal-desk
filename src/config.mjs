@@ -37,6 +37,12 @@ export const defaultConfig = {
     // resolution gets wrong often enough to be worth asking. Its responses carry an `identity`
     // block rather than `claims`, so it never becomes a citation for anything.
     identitySource: 'https://people.test/{email}',
+
+    // How old a record may be and still be stated as a current fact. Ninety days is a policy
+    // choice with a number attached, which is why it sits in config rather than in the stage.
+    // Widening it is a decision somebody makes on purpose; a source that quietly declines to
+    // date itself is not, which is why undated evidence is unusable at any window width.
+    maxEvidenceAgeMs: 90 * 24 * 60 * 60 * 1000,
   },
 
   score: {
