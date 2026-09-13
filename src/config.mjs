@@ -1,0 +1,102 @@
+// The pipeline wiring. The stage sequence and every threshold live here, in data, so that
+// adapting the system means replacing a module and editing this file. That is the whole
+// extension mechanism; there is no plugin framework and there is not going to be one.
+
+import { ingest } from './stages/ingest.mjs';
+import { enrich } from './stages/enrich.mjs';
+import { score } from './stages/score.mjs';
+import { route } from './stages/route.mjs';
+import { draft } from './stages/draft.mjs';
+import { gate } from './stages/gate.mjs';
+import { queue } from './stages/queue.mjs';
+import { handoff } from './stages/handoff.mjs';
+
+// Order is the pipeline. Nothing else defines it.
+export const pipeline = [ingest, enrich, score, route, draft, gate, queue, handoff];
+
+// Not a credential. Fixture mode signs its own fixtures with this constant so the HMAC path
+// is genuinely exercised offline. Live mode (M4) reads a real secret from the environment.
+export const FIXTURE_SECRET = 'signal-desk-fixture-secret';
+
+export const defaultConfig = {
+  mode: 'fixture',
+
+  // Fixture mode pins the clock so a run is reproducible. Live mode replaces this.
+  clock: { start: '2026-03-01T09:00:00.000Z', stepMs: 1000 },
+
+  ingest: {
+    secret: FIXTURE_SECRET,
+    replayWindowMs: 300000,
+  },
+
+  enrich: {
+    sources: ['https://directory.test/company/{domain}', 'https://newsroom.test/{domain}'],
+  },
+
+  score: {
+    seniorTitles: ['chief', 'vp', 'vice president', 'head of', 'director'],
+    highIntentPages: ['/pricing', '/demo', '/book-a-call'],
+    employeeBand: { min: 10, max: 500 },
+  },
+
+  route: {
+    floor: 40,
+    // Highest first. The first band a score clears wins.
+    bands: [
+      { name: 'priority', min: 80, owner: 'ae-round-robin', play: 'executive-intro' },
+      { name: 'standard', min: 40, owner: 'sdr-queue', play: 'problem-first' },
+    ],
+  },
+
+  draft: {
+    maxBodyChars: 900,
+    templates: {
+      'executive-intro': {
+        subject: 'Your team and {company_name}',
+        body: [
+          'Hi {contact_first_name},',
+          '',
+          'You spent time on our pricing page this week. Teams your size in {claim:industry} usually',
+          'get there after the same thing breaks twice, so I will skip the pitch.',
+          '',
+          'At around {claim:employee_count} people, the constraint is rarely the tooling. It is that',
+          'nobody owns the handoff between the signal and the send.',
+          '',
+          'Open to a short call?',
+        ].join('\n'),
+      },
+      'problem-first': {
+        subject: 'A question about {company_name}',
+        body: [
+          'Hi {contact_first_name},',
+          '',
+          'A question rather than a pitch. At around {claim:employee_count} people, who decides',
+          'which inbound signals are worth a human reply?',
+          '',
+          'Most teams your size answer that with a rule nobody has revisited in a year.',
+          '',
+          'Worth a short conversation?',
+        ].join('\n'),
+      },
+    },
+  },
+
+  gate: {
+    minBodyChars: 80,
+    maxBodyChars: 900,
+    bannedPhrases: ['guaranteed results', '100% risk free', 'act now', 'limited time only'],
+  },
+
+  queue: {
+    // The earned-autonomy hook. It exists so the code path is real and reviewable, and it
+    // ships off. Turning it on is an explicit, separate decision with its own consequences.
+    autonomy: { enabled: false },
+    // Populated by the runner from fixtures/approvals.json. Recorded human decisions, an M1
+    // stand-in for the approval workflow that M2 builds.
+    approvals: {},
+  },
+
+  handoff: {
+    adapter: 'dry-run-json',
+  },
+};
