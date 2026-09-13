@@ -15,8 +15,14 @@ import { pass, refuse } from '../contract.mjs';
 
 const PLACEHOLDER = /\{[a-z0-9_]+(?::[a-z0-9_]+)?\}/i;
 const EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
-// Deliberately loose. A gate that only catches the tidy format is a gate that lets the
-// untidy one through, and the cost of a false positive here is a human glance.
+// Deliberately loose. A gate that only catches the tidy format is a gate that lets the untidy
+// one through.
+//
+// The looseness is justified by asymmetric cost, not by cheapness. A gate refusal is TERMINAL
+// for this lead in this run; nobody glances at it and waves it past. What makes over-matching
+// the right trade anyway is that the two errors are not the same size. A falsely refused draft
+// is recoverable by editing the text and running again. A phone number that reaches a stranger
+// is not recoverable at all.
 const PHONE = /(?:\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/;
 
 // Rule order is stable and meaningful: the reported reason code is the first violation in
