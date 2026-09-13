@@ -366,6 +366,90 @@ test('the quoted payload carries live markup, which is what the dashboard has to
   assert.match(flag.detail, /markup-shaped content/);
 });
 
+// --- hostile fixture 10: the hallucination bait --------------------------------------
+//
+// A signal naming a company that does not exist. Every source comes back empty, and the failure
+// mode this fixture exists to prevent is an enrichment layer that fills the hole with something
+// plausible and a draft that then states it.
+//
+// IT NEEDS NO NEW MECHANISM, AND THAT IS THE FINDING. M1 built exactly this discipline — every
+// claim binds to a citation fetched in the same run, and no citations means no lead. What the
+// corpus never had was a fixture that reached it, because every fixture company had at least one
+// recording. The gap was evidence, not mechanism, and inventing a rule to cover an existing rule
+// would have been the worse of the two outcomes. See docs/M3-SPEC.md part 1 (d).
+
+test('the hallucination-bait fixture ships a company no recording knows anything about', () => {
+  const { signals, recordings } = loadFixtures();
+  assert.ok(signals.find((s) => s.id === 'sig-9010'), 'the signal is loaded');
+  const known = Object.keys(recordings).filter((url) => url.includes('nowhere.test'));
+  assert.deepEqual(known, [], 'not one source, company or person, has a record for it');
+});
+
+test('the hallucination bait is REFUSED with NO_CITED_CLAIMS', () => {
+  const lead = run.report.leads.find((l) => l.lead_id === leadIdForSignal('sig-9010'));
+  assert.equal(lead.final_status, 'REFUSE');
+  assert.equal(lead.final_stage, 'enrich');
+  assert.deepEqual(lead.reason_codes, ['NO_CITED_CLAIMS']);
+});
+
+test('the refusal reports what the pipeline OBSERVED, not what a human would infer', () => {
+  // Why the code is not something like COMPANY_UNVERIFIABLE. What this run observed is that no
+  // source produced a citable claim. "The company does not exist" is a different and stronger
+  // statement, and nothing here can tell it apart from "every source is down". A code asserting
+  // non-existence on this evidence would be exactly the confident unsupported claim the fixture
+  // is named after, emitted by the safeguard built to refuse it.
+  const leadId = leadIdForSignal('sig-9010');
+  const refusal = entriesFor(leadId).find((e) => e.verdict === 'REFUSE');
+  assert.match(refusal.detail, /no configured source answered/);
+  assert.doesNotMatch(refusal.detail, /does not exist|fake|nonexistent/i);
+});
+
+test('the trail shows every source independently knowing nothing, so a reader can draw their own conclusion', () => {
+  const leadId = leadIdForSignal('sig-9010');
+  const trail = entriesFor(leadId);
+  const unavailable = trail.filter((e) => e.reason_codes.includes('SOURCE_UNAVAILABLE'));
+  assert.equal(unavailable.length, 2, 'both company sources reported their own miss');
+  assert.ok(
+    trail.some((e) => e.reason_codes.includes('IDENTITY_UNVERIFIED')),
+    'and the person-level source reported its own miss too',
+  );
+});
+
+test('nothing was invented to fill the hole: the lead carries no cited claim at all', () => {
+  const lead = run.report.leads.find((l) => l.lead_id === leadIdForSignal('sig-9010'));
+  const cited = (lead.output.claims ?? []).filter((c) => c.cited);
+  assert.deepEqual(cited, []);
+});
+
+test('the hallucination bait never reaches a draft, so no claim about it is ever written down', () => {
+  const leadId = leadIdForSignal('sig-9010');
+  assert.deepEqual(
+    run.ledger.entries().filter((e) => e.lead_id === leadId && e.stage === 'draft'),
+    [],
+  );
+});
+
+// --- the design's hostile suite, complete --------------------------------------------
+
+test('every hostile input DESIGN.md §7 names is exercised by the demo corpus', () => {
+  // The list in the design, as reason codes. This test is what stops the suite from being
+  // "some hostile fixtures" again: adding a fixture is cheap and forgetting one is silent.
+  const observed = new Set(
+    run.ledger.entries().filter((e) => e.verdict === 'REFUSE').flatMap((e) => e.reason_codes),
+  );
+  for (const code of [
+    'MALFORMED_PAYLOAD', // malformed webhook payload
+    'DUPLICATE_SIGNAL', // duplicate / replayed signal
+    'IDENTITY_CONTRADICTED', // wrong-person match
+    'EVIDENCE_DECAYED', // decayed enrichment data
+    'PROMPT_INJECTION', // prompt injection embedded in a scraped page
+    'PII_IN_BODY', // PII surfacing mid-enrichment
+    'NO_CITED_CLAIMS', // hallucination-bait lead
+  ]) {
+    assert.ok(observed.has(code), `the demo run exercises ${code}`);
+  }
+});
+
 // --- the refusals are visible in the run's own report --------------------------------
 
 test('every refusal in the run names a reason code; none is unexplained', () => {

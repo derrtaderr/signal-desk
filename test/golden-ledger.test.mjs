@@ -69,6 +69,7 @@ test('the golden ledger pins the exact refusals, so a silently relaxed rule is c
   assert.deepEqual(refusals, [
     'enrich:EVIDENCE_DECAYED',
     'enrich:IDENTITY_CONTRADICTED',
+    'enrich:NO_CITED_CLAIMS',
     'gate:PII_IN_BODY',
     'gate:PROMPT_INJECTION',
     'gate:RUBRIC_FAILED',

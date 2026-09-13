@@ -205,6 +205,34 @@ const lumen = signed({
   },
 });
 
+// Hostile fixture 10: a company that does not exist.
+//
+// No recording anywhere knows nowhere.test. Not the directory, not the newsroom, not the person
+// source. The failure mode this exists to prevent is an enrichment layer that fills the hole
+// with something plausible and a draft that then states it as fact.
+//
+// It needs no new mechanism, and that is the finding. M1's rule — every claim binds to a
+// citation fetched in the same run, and no citations means no lead — has always covered this.
+// What the corpus never had was a fixture that reached it, because every company here had at
+// least one recording. The gap was evidence, not mechanism.
+//
+// The refusal stays NO_CITED_CLAIMS rather than becoming something like COMPANY_UNVERIFIABLE.
+// What this run OBSERVED is that no source produced a citable claim; "the company does not
+// exist" is a stronger statement nothing here can tell apart from "every source is down".
+// Asserting it would be the confident unsupported claim this fixture is named after, emitted by
+// the safeguard built to refuse it. The trail shows three sources each knowing nothing, and the
+// reader draws their own conclusion. That is the correct division of labour.
+const nowhere = signed({
+  id: 'sig-9010',
+  source: 'rb2b',
+  received_at: '2026-03-01T09:00:25.000Z',
+  payload: {
+    company: { name: 'Ardent Volumetrics', domain: 'nowhere.test' },
+    contact: { name: 'Kit Marlowe', email: 'kit@nowhere.test', title: 'VP Revenue Operations' },
+    intent: { page: '/pricing', visits: 5 },
+  },
+});
+
 const signals = [
   ['0001-acme.json', acme],
   ['0002-northwind.json', northwind],
@@ -219,6 +247,7 @@ const signals = [
   ['9007-wrong-person-match.json', meridian],
   ['9008-decayed-enrichment.json', cinder],
   ['9009-prompt-injection.json', lumen],
+  ['9010-hallucination-bait.json', nowhere],
 ];
 
 // --- recordings ----------------------------------------------------------------------
