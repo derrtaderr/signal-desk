@@ -496,3 +496,104 @@ test('enrich never reaches the network directly; it only uses the injected fetch
   await enrich.run(lead(), ctx);
   assert.equal(called, 1);
 });
+
+// --- the fieldless identity record ---------------------------------------------------------
+//
+// PR #3 review finding, carried into the M4 brief verbatim: "fieldless identity record falls
+// through to IDENTITY_CONFIRMED (spec-contradicting edge, corpus-unreachable today, must gate
+// before a live identity source)".
+//
+// The comparison loop skips a field the record does not carry, so a record carrying NONE of them
+// compares nothing and reaches the confirmation at the bottom. The module's own stated rule is
+// that absence never reads as confirmation, and this is the one path where it did. Unreachable
+// from the corpus because every recorded person response is complete; reachable on the first call
+// to a live person-lookup API that returns a thin record.
+
+test('an identity record that compares ZERO fields is IDENTITY_UNVERIFIED, never CONFIRMED', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx(
+      { ...recordings, [PERSON]: { status: 200, body: { as_of: '2026-02-20T00:00:00.000Z', identity: {} } } },
+      withIdentity,
+    ),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.ok(
+    !result.entries.some((e) => e.reason_codes?.includes('IDENTITY_CONFIRMED')),
+    'an empty identity record confirms nothing, so it must not be reported as a confirmation',
+  );
+  assert.ok(result.entries.some((e) => e.reason_codes?.includes('IDENTITY_UNVERIFIED')));
+});
+
+test('an identity record carrying only fields the rule does not know is IDENTITY_UNVERIFIED', async () => {
+  // The realistic live shape. A vendor answers 200 with a well-formed record full of fields this
+  // pipeline has no rule for, and not one of the three it compares.
+  const result = await enrich.run(
+    lead(),
+    makeCtx(
+      {
+        ...recordings,
+        [PERSON]: {
+          status: 200,
+          body: {
+            as_of: '2026-02-20T00:00:00.000Z',
+            identity: { linkedin_url: 'https://li.test/in/dana', seniority: 'vp', country: 'US' },
+          },
+        },
+      },
+      withIdentity,
+    ),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.ok(!result.entries.some((e) => e.reason_codes?.includes('IDENTITY_CONFIRMED')));
+  const entry = result.entries.find((e) => e.reason_codes?.includes('IDENTITY_UNVERIFIED'));
+  assert.ok(entry, 'the gap is named in the trail rather than left silent');
+  assert.match(entry.detail, /compared no field|no comparable field/i);
+});
+
+test('one compared field that agrees is still a confirmation, because the bar is one and not three', async () => {
+  // The fix must not become mandatory person-level enrichment by the back door. A source that
+  // confirms the address and says nothing about the company is evidence, and M3 declined to
+  // demand a complete record. What changes is only that ZERO comparisons stops counting as one.
+  const result = await enrich.run(
+    lead(),
+    makeCtx(
+      {
+        ...recordings,
+        [PERSON]: {
+          status: 200,
+          body: { as_of: '2026-02-20T00:00:00.000Z', identity: { email: 'dana@acme.test' } },
+        },
+      },
+      withIdentity,
+    ),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.ok(result.entries.some((e) => e.reason_codes?.includes('IDENTITY_CONFIRMED')));
+});
+
+test('a confirmation says how many fields it compared, so CONFIRMED is not taken at face value', async () => {
+  const oneField = await enrich.run(
+    lead(),
+    makeCtx(
+      {
+        ...recordings,
+        [PERSON]: {
+          status: 200,
+          body: { as_of: '2026-02-20T00:00:00.000Z', identity: { email: 'dana@acme.test' } },
+        },
+      },
+      withIdentity,
+    ),
+  );
+  const all = await enrich.run(
+    lead(),
+    makeCtx({ ...recordings, [PERSON]: personRecord() }, withIdentity),
+  );
+
+  const detailOf = (result) =>
+    result.entries.find((e) => e.reason_codes?.includes('IDENTITY_CONFIRMED')).detail;
+
+  assert.match(detailOf(oneField), /\b1 of 3\b/);
+  assert.match(detailOf(all), /\b3 of 3\b/);
+});
