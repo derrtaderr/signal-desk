@@ -7,6 +7,7 @@ import { createContext, fixtureClock, recordedFetcher } from '../src/context.mjs
 
 const DIRECTORY = 'https://directory.test/company/acme.test';
 const NEWSROOM = 'https://newsroom.test/acme.test';
+const PERSON = 'https://people.test/dana@acme.test';
 
 function lead(overrides = {}) {
   return {
@@ -20,7 +21,7 @@ function lead(overrides = {}) {
   };
 }
 
-function makeCtx(recordings) {
+function makeCtx(recordings, enrichConfig = {}) {
   const ledger = new Ledger();
   return createContext({
     ledger,
@@ -33,11 +34,16 @@ function makeCtx(recordings) {
           'https://directory.test/company/{domain}',
           'https://newsroom.test/{domain}',
         ],
+        ...enrichConfig,
       },
     },
     run_id: 'run-test',
   });
 }
+
+// The identity-source wiring the wrong-person fixture exercises. Kept out of the default
+// config above so the tests that predate it keep asserting what they were written to assert.
+const withIdentity = { identitySource: 'https://people.test/{email}' };
 
 const recordings = {
   [DIRECTORY]: {
@@ -114,6 +120,159 @@ test('enrich passes the lead through untouched alongside the claims it added', a
   assert.equal(output.lead_id, 'lead-abc123456789');
   assert.equal(output.company.domain, 'acme.test');
   assert.equal(output.contact.email, 'dana@acme.test');
+});
+
+// --- identity verification, the wrong-person catch -----------------------------------
+//
+// The signal names a contact. Vendor-side identity resolution is probabilistic, so the human
+// the signal names is not reliably the human behind the visit. These tests are the mechanism
+// the 9007 fixture exercises end to end. See docs/M3-SPEC.md part 1 (a).
+
+function personRecord(overrides = {}) {
+  return {
+    status: 200,
+    body: {
+      identity: {
+        name: 'Dana Ruiz',
+        email: 'dana@acme.test',
+        company_domain: 'acme.test',
+        title: 'VP Revenue Operations',
+        ...overrides,
+      },
+    },
+  };
+}
+
+test('an identity source that confirms the contact records IDENTITY_CONFIRMED and proceeds', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ ...recordings, [PERSON]: personRecord() }, withIdentity),
+  );
+  assert.equal(result.status, 'PASS');
+  const confirmation = result.entries.find((e) => e.reason_codes?.includes('IDENTITY_CONFIRMED'));
+  assert.ok(confirmation, 'the confirmation is on the record, not merely implied by the absence of a refusal');
+  assert.deepEqual(confirmation.evidence_refs, [PERSON]);
+});
+
+test('an identity source placing the contact at another company REFUSES with IDENTITY_CONTRADICTED', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ ...recordings, [PERSON]: personRecord({ company_domain: 'harborline.test' }) }, withIdentity),
+  );
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['IDENTITY_CONTRADICTED']);
+  assert.match(result.detail, /harborline\.test/);
+});
+
+test('an identity source naming a different person REFUSES with IDENTITY_CONTRADICTED', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ ...recordings, [PERSON]: personRecord({ name: 'Jordan Blake' }) }, withIdentity),
+  );
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['IDENTITY_CONTRADICTED']);
+  assert.match(result.detail, /Jordan Blake/);
+});
+
+test('an identity source answering about a different address REFUSES with IDENTITY_CONTRADICTED', async () => {
+  // The URL was keyed on the contact's own address, so a record naming someone else's is the
+  // source answering a question nobody asked.
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ ...recordings, [PERSON]: personRecord({ email: 'someone.else@acme.test' }) }, withIdentity),
+  );
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['IDENTITY_CONTRADICTED']);
+});
+
+test('a contradicted identity refuses before any claim source is fetched', async () => {
+  // The whole reason identity runs first. A person the evidence contradicts should not consume
+  // the claim fetches, and in live mode should not consume the spend either.
+  const fetched = [];
+  const ctx = createContext({
+    ledger: new Ledger(),
+    clock: fixtureClock({ start: '2026-03-01T09:00:00.000Z', stepMs: 1000 }),
+    fetch: async (url) => {
+      fetched.push(url);
+      if (url === PERSON) return personRecord({ company_domain: 'harborline.test' });
+      return { status: 200, body: { claims: {} } };
+    },
+    config: {
+      mode: 'fixture',
+      enrich: {
+        sources: ['https://directory.test/company/{domain}', 'https://newsroom.test/{domain}'],
+        ...withIdentity,
+      },
+    },
+    run_id: 'run-test',
+  });
+
+  const result = await enrich.run(lead(), ctx);
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(fetched, [PERSON], 'the identity source was the only thing fetched');
+});
+
+test('identity comparison ignores case and surrounding whitespace, not substance', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx(
+      { ...recordings, [PERSON]: personRecord({ name: '  dana   RUIZ ', company_domain: 'ACME.test' }) },
+      withIdentity,
+    ),
+  );
+  assert.equal(result.status, 'PASS');
+});
+
+test('an identity source with no recording records IDENTITY_UNVERIFIED and the lead proceeds', async () => {
+  // Not a fail-open. Enrich is not a gate, and "no identity evidence" is the state every lead
+  // was in before this rule existed. What fail-closed requires is that absence never reads as
+  // CONFIRMATION, and the ledger says so out loud rather than staying silent.
+  const result = await enrich.run(lead(), makeCtx(recordings, withIdentity));
+  assert.equal(result.status, 'PASS');
+  const entry = result.entries.find((e) => e.reason_codes?.includes('IDENTITY_UNVERIFIED'));
+  assert.ok(entry, 'the gap is named in the trail');
+  assert.ok(
+    !result.entries.some((e) => e.reason_codes?.includes('IDENTITY_CONFIRMED')),
+    'an unverified identity is never reported as a confirmed one',
+  );
+});
+
+test('an identity source answering non-200 records IDENTITY_UNVERIFIED rather than confirming', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ ...recordings, [PERSON]: { status: 503, body: {} } }, withIdentity),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.ok(result.entries.some((e) => e.reason_codes?.includes('IDENTITY_UNVERIFIED')));
+});
+
+test('an identity response carrying no identity block records IDENTITY_UNVERIFIED', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ ...recordings, [PERSON]: { status: 200, body: {} } }, withIdentity),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.ok(result.entries.some((e) => e.reason_codes?.includes('IDENTITY_UNVERIFIED')));
+});
+
+test('with no identity source configured, enrich makes no identity claim either way', async () => {
+  const result = await enrich.run(lead(), makeCtx(recordings));
+  assert.equal(result.status, 'PASS');
+  const identityEntries = result.entries.filter((e) =>
+    (e.reason_codes ?? []).some((code) => code.startsWith('IDENTITY_')),
+  );
+  assert.deepEqual(identityEntries, [], 'a pipeline not doing identity verification does not report one');
+});
+
+test('the identity source contributes no claim and no citation, only a verification', async () => {
+  // It answers "is this the right person", not "what is true about this company". Letting it
+  // count as a citation would make a lead with zero usable claims look evidenced.
+  const result = await enrich.run(
+    lead(),
+    makeCtx({ ...recordings, [PERSON]: personRecord() }, withIdentity),
+  );
+  assert.deepEqual(result.output.citations.sort(), [DIRECTORY, NEWSROOM].sort());
+  assert.ok(!result.output.claims.some((c) => c.citation === PERSON));
 });
 
 test('enrich never reaches the network directly; it only uses the injected fetcher', async () => {
