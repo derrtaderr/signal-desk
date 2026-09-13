@@ -14,7 +14,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { executeFixtureRun } from '../src/runner.mjs';
-import { verifyChain, parseLedger, isSealed, sealOf, GENESIS_PREV } from '../src/ledger.mjs';
+import { Ledger, verifyChain, parseLedger, isSealed, sealOf, GENESIS_PREV } from '../src/ledger.mjs';
 
 const run = await executeFixtureRun();
 const entries = run.ledger.entries();
@@ -117,4 +117,57 @@ test('a sealed ledger written and re-parsed is still sealed', () => {
   const reparsed = parseLedger(run.ledger.toJSONL());
   assert.equal(isSealed(reparsed), true);
   assert.deepEqual(sealOf(reparsed).summary, run.report.summary);
+});
+
+// --- the boundary the chain and the seal do NOT cover -------------------------------------
+//
+// Asserted rather than hidden, the same way the truncation case above is. A reader who trusts
+// `replay`'s first two lines needs to know exactly what they buy.
+
+test('KNOWN BOUNDARY: a fully recomputed chain and seal verify clean', () => {
+  // The chain is UNKEYED. Every hash is sha256 over public inputs, so anyone who can run this
+  // code can rewrite a ledger from scratch, drop whatever they like, and produce a chain and a
+  // seal that verify perfectly. The chain is tamper-EVIDENT against edits to a written file. It
+  // is not tamper-PROOF against someone who can regenerate the whole thing.
+  const real = new Ledger();
+  const entry = (stage, verdict) => ({
+    ts: '2026-03-01T09:00:00.000Z',
+    run_id: 'run-x',
+    lead_id: 'lead-1',
+    stage,
+    verdict,
+    reason_codes: [],
+    evidence_refs: [],
+    actor: 'system',
+  });
+  real.append(entry('ingest', 'PASS'));
+  real.append(entry('gate', 'REFUSE'));
+
+  // An attacker drops the gate refusal and rebuilds everything.
+  const forged = new Ledger();
+  forged.append(entry('ingest', 'PASS'));
+  forged.append({
+    ...entry('seal', 'PASS'),
+    lead_id: '-',
+    reason_codes: ['RUN_SEALED'],
+    sealed: true,
+    summary: { PASS: 1, NEEDS_HUMAN: 0, REFUSE: 0, total: 1 },
+    head: forged.head(),
+  });
+
+  const entries = forged.entries();
+  assert.deepEqual(verifyChain(entries), { ok: true }, 'the forged chain verifies');
+  assert.equal(isSealed(entries), true, 'and reads as a completed run');
+});
+
+test('what actually catches a recomputed ledger is RE-EXECUTION, not verification', () => {
+  // Which is why `replay` does both, and reports them separately. The chain and the seal answer
+  // "was this file changed after it was written". Only re-running the pipeline from the same
+  // inputs and comparing bytes answers "is this what the code actually decides". A forged
+  // ledger passes the first and fails the second, and the CLI's byte comparison is the check
+  // that does the work. Closing the gap at the integrity layer would need a signing key, which
+  // is a hosted-secret story this tool deliberately does not have.
+  const genuine = run.ledger.toJSONL();
+  const tampered = genuine.split('\n').filter((line) => !line.includes('"REFUSE"')).join('\n');
+  assert.notEqual(tampered, genuine, 'the forged ledger differs in bytes from the real run');
 });

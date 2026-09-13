@@ -425,5 +425,83 @@ from the leads actually routed to that play, so growing the corpus cannot silent
 
 ### Counts
 
-Base `ce0b9de` (merged M1): 331 tests. This lane: 519 tests, all green. Golden ledger 32 -> 55
-entries. Demo corpus 6 -> 10 signals, 4 -> 8 refusals, one survivor throughout.
+Base `ce0b9de` (merged M1): 331 tests. Golden ledger 32 -> 55 entries. Demo corpus 6 -> 10
+signals, 4 -> 8 refusals, one survivor throughout. Test count at the end of the first pass was
+520; see the fix-wave section below for where it finished.
+
+
+---
+
+## Fix wave 1, after the independent ship-check
+
+The ship-check returned BLOCK. This section records what it found and what changed, because a
+spec that only describes the version that passed is a spec that hides the review.
+
+Every finding was **reproduced before being fixed**, and re-probed after.
+
+### BLOCKER: `replay` ignored the decisions store
+
+`verbReplay` rebuilt the run with `buildRun({ fixtures: loadFixtures() })` and omitted the
+`decisions` that `verbRun` layers in. Any run that acted on a human approval therefore replayed
+as the fixture-only run, produced a different run id, and told the user "the inputs or the
+wiring have changed since that run" — blaming them for a wiring bug, at the happy path's final
+step.
+
+It shipped because **no test walked `run` → `approve` → `run` → `replay`**. The approval
+workflow tests stopped at the second `run`. Four subprocess tests now cover it, including the
+seal summary on a post-approval run, and one pinning the genuine limitation that a PRE-approval
+run stops replaying once a decision exists, since replay re-executes from current inputs.
+
+### IMPORTANT: the JSON writer stripped every nested object
+
+`stableJson` passed `Object.keys(value).sort()` to `JSON.stringify` as a **replacer array**,
+which is an allowlist of key names applied at *every* nesting depth. Every export shipped
+`"claim_refs": [{}]`, so the citation grounding each claim — the evidence this whole pipeline
+exists to carry — was missing from the artifact.
+
+The lesson is about where assertions were pointed. Every existing conformance test read
+`adapter.render()`, and the rendered object was always correct; the loss happened in the writer.
+The harness now asserts on the **serialised bytes** for every adapter, plus a round-trip check.
+That byte assertion immediately caught a second gap: the `eml` adapter's serialised form carried
+no evidence at all, now fixed with `X-Signal-Desk-Claim` / `X-Signal-Desk-Citations` headers.
+
+### IMPORTANT: the rubric fail-opened against its own spec
+
+This document promised "any single criterion FAIL"; the code inspected only criteria named in
+`requiredCriteria`. A judge volunteering `legal_risk: FAIL` was ignored and the draft passed.
+
+Reconciled toward the code, and the reason is this module's one rule rather than a general
+preference. "Silence is not a pass" exists so an unanswered question cannot read as approval.
+Discarding a volunteered FAIL is that mistake pointed the other way: treating something the
+judge actually *said* as if it had not been said. `requiredCriteria` keeps its meaning — the
+questions that must be answered — and was never the list of answers allowed to matter.
+
+### Minors fixed rather than filed
+
+- **PII appeared verbatim in refusal details**, and therefore in the committed golden ledger.
+  Judged: withhold it. The gate refuses so a value does not travel; carrying it into the
+  durable, shareable record makes the safeguard the mechanism of the leak. Details now name the
+  kind of finding. The operator loses nothing, because the draft still holds its own text.
+- **Compatibility-form PII bypassed both detectors.** A fullwidth `＠` and fullwidth digits went
+  through silently. Both passes now normalise with NFKC before matching.
+- **Deciding twice was silent.** `approve` on an already-approved draft appended a duplicate and
+  printed success. It now reports the standing decision and records nothing.
+- **`README.md` pointed at `docs/M1-SPEC.md`** as what the current milestone built.
+
+## Deferred, explicitly
+
+Not solved, not hidden. Each is pinned by a test that fails if someone closes it, and each is
+named in the README's "Known boundaries".
+
+| Deferral | Why it is not in M2 |
+|---|---|
+| **The ledger chain is unkeyed.** A fully recomputed chain and seal verify clean; only re-execution catches a rewritten ledger | Closing it at the integrity layer needs a signing key, and a key makes this a hosted-secret tool. `replay`'s byte comparison is the check that does the work, which is why it is reported separately |
+| **Homoglyph PII adjacent to an `@`.** NFKC folds compatibility forms but not Cyrillic а onto Latin a | Needs a Unicode confusables table, which is different work from normalisation. The gap is narrower than it looks: a homoglyph mid-local-part is still caught, since the ASCII run either side matches |
+| **Approvals never expire.** A decision binds to a draft hash indefinitely | An expiry window is a policy decision with a number attached, and inventing one here would be scope this milestone did not earn |
+| **Deduplication is per run.** A lead accepted Monday can be processed again Friday | Same reason: cross-run suppression needs a retention window. Accepted as argued by the ship-check |
+| **Recordings sit outside the run id**, consistent with M1 | Two runs with different recordings share an id. Accepted as argued; a candidate for M3 |
+
+### Final counts
+
+531 tests at the start of the fix wave's first commit, **549** at its end, all green. Every
+commit in the wave was red first.

@@ -309,5 +309,24 @@ $ node scripts/make-fixtures.mjs
 
 ## Design
 
-`docs/DESIGN.md` is the approved design. `docs/M1-SPEC.md` is what this milestone built,
-including where it interpreted the M1 and M2 boundary and where it diverged.
+`docs/DESIGN.md` is the approved design. `docs/M2-SPEC.md` is what this milestone built,
+including its design decisions, its divergences, and an addendum recording what the
+implementation taught and which limitations are deferred rather than solved.
+`docs/M1-SPEC.md` is the previous milestone. `docs/ADAPTERS.md` is the sender adapter contract.
+
+### Known boundaries
+
+Named here rather than left to be discovered, and each one pinned by a test that fails if
+somebody closes it.
+
+- **The ledger chain is unkeyed.** It proves order and integrity, and the terminal seal proves
+  completeness. None of that proves authenticity: anyone who can run this code can regenerate a
+  ledger from scratch and produce a chain and seal that verify. What catches that is
+  re-execution, which is why `replay` compares bytes as a separate check. A signing key would
+  close it and would make this a hosted-secret tool, which it deliberately is not.
+- **PII detection is ASCII, after NFKC normalisation.** Fullwidth and other compatibility forms
+  are folded and caught. A homoglyph sitting directly against an `@` is not; that needs a
+  Unicode confusables table.
+- **Approvals do not expire.** A decision binds to a draft hash forever. Nothing re-asks after a
+  week, and a draft that still hashes the same is still authorised.
+- **Deduplication is per run.** A lead processed on Monday can be processed again on Friday.
