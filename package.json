@@ -1,0 +1,19 @@
+{
+  "name": "signal-desk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A signal-to-outreach pipeline where every decision can be inspected, replayed, or refused.",
+  "type": "module",
+  "bin": {
+    "signal-desk": "./bin/signal-desk.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "golden:update": "node scripts/update-golden.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
