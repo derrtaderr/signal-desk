@@ -233,3 +233,62 @@ test('the shipped default config in the repo does not enable autonomy', async ()
   const { defaultConfig } = await import('../src/config.mjs');
   assert.notEqual(defaultConfig.queue?.autonomy?.enabled, true);
 });
+
+// --- the approval non-expiry deferral, pinned ------------------------------------------
+//
+// THIS IS A TRIPWIRE, NOT AN ENDORSEMENT. Read the next paragraph before changing it.
+//
+// docs/M2-SPEC.md defers approval expiry explicitly: "an expiry window is a policy decision with
+// a number attached, and inventing one here would be scope this milestone did not earn." The M2
+// review filed a minor against that deferral, and the minor was correct. Every approval in the
+// fixture corpus is minutes old on the pinned clock, so somebody could have added an expiry
+// window and watched the whole suite stay green. A deferral that nothing can detect being closed
+// is a deferral that gets closed by accident, in silence, by someone who thought they were
+// adding a feature.
+//
+// So this test asserts the CURRENT behaviour deliberately: a decision of any age still binds.
+// It is written to fail the moment expiry is introduced, and failing is the correct outcome at
+// that point. Whoever introduces it should delete this test in the same commit, having read this
+// comment and decided on purpose.
+//
+// Two honest notes about what this test is. It is a characterisation test, so it passed the
+// moment it was written and there is no red-to-green cycle behind it; claiming one would be a
+// lie about the evidence. And a tripwire nobody has ever seen fire is indistinguishable from a
+// tautology, so the lane report records the result of temporarily adding an expiry window and
+// watching this test fail.
+
+test('an approval recorded years before the run still binds, because approvals do not expire', async () => {
+  const subject = lead();
+  const ancient = approvalFor(subject, { at: '2019-06-14T11:00:00.000Z' });
+
+  const result = await queue.run(subject, makeCtx({ approvals: [ancient] }));
+
+  assert.equal(result.status, 'PASS', 'age is not currently a reason to re-ask');
+  assert.deepEqual(result.reason_codes, []);
+  const human = result.entries.find((e) => e.actor === 'human');
+  assert.deepEqual(human.reason_codes, ['APPROVED_BY_HUMAN']);
+  assert.match(human.detail, /2019-06-14/, 'and the ledger says how old the decision was');
+});
+
+test('an ancient REJECTION also still binds, so the deferral is pinned in both directions', async () => {
+  // Expiry is symmetric or it is incoherent. A window that re-asks a stale approval and leaves a
+  // stale rejection standing forever would be a different and stranger policy than the one
+  // nobody has chosen yet.
+  const subject = lead();
+  const ancient = approvalFor(subject, { decision: 'reject', at: '2019-06-14T11:00:00.000Z' });
+
+  const result = await queue.run(subject, makeCtx({ approvals: [ancient] }));
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['REJECTED_BY_HUMAN']);
+});
+
+test('the queue stage reads no clock at all, which is WHY approvals cannot expire today', async () => {
+  // The mechanical statement of the same fact, and the more durable half of the pin. Expiry
+  // cannot be added without giving this stage a clock, so a reviewer can check the claim by
+  // looking for one rather than by trusting the two tests above.
+  const source = await (await import('node:fs/promises')).readFile(
+    new URL('../src/stages/queue.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(source, /ctx\.clock/, 'the queue stage has no clock to compare an age against');
+});
