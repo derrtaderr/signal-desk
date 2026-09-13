@@ -4,8 +4,21 @@ import assert from 'node:assert/strict';
 import { handoff } from '../src/stages/handoff.mjs';
 import { Ledger } from '../src/ledger.mjs';
 import { createContext, fixtureClock, recordedFetcher } from '../src/context.mjs';
+import { computeDraftHash } from '../src/draft-hash.mjs';
 
+// The approval is BOUND to the draft it authorises. That binding is what handoff re-checks,
+// so building a lead means computing the hash rather than asserting a decision floats free.
 function lead(overrides = {}) {
+  const draft = {
+    to: 'dana@acme.test',
+    subject: 'Your team and Acme Robotics',
+    body: 'Hi Dana,\n\nOpen to a short call?',
+    template: 'executive-intro',
+    claim_refs: [{ field: 'employee_count', citation: 'https://directory.test/company/acme.test' }],
+    ...(overrides.draft ?? {}),
+  };
+  const draft_hash = computeDraftHash(draft);
+
   return {
     lead_id: 'lead-abc123456789',
     company: { name: 'Acme Robotics', domain: 'acme.test' },
@@ -14,17 +27,19 @@ function lead(overrides = {}) {
     citations: ['https://directory.test/company/acme.test'],
     score: { total: 88, factors: [] },
     route: { band: 'priority', owner: 'ae-round-robin', play: 'executive-intro', reason: 'x' },
-    draft: {
-      to: 'dana@acme.test',
-      subject: 'Your team and Acme Robotics',
-      body: 'Hi Dana,\n\nOpen to a short call?',
-      template: 'executive-intro',
-      claim_refs: [{ field: 'employee_count', citation: 'https://directory.test/company/acme.test' }],
-    },
+    draft,
+    draft_hash,
     gate: { violations: [], rules_run: [] },
-    queue: { autonomy_enabled: false, owner: 'ae-round-robin' },
-    approval: { decision: 'approve', by: 'dana.reviewer', at: '2026-03-01T08:55:00.000Z' },
+    queue: { autonomy_enabled: false, owner: 'ae-round-robin', draft_hash },
+    approval: {
+      draft_hash,
+      lead_id: 'lead-abc123456789',
+      decision: 'approve',
+      by: 'dana.reviewer',
+      at: '2026-03-01T08:55:00.000Z',
+    },
     ...overrides,
+    ...(overrides.draft ? { draft, draft_hash } : {}),
   };
 }
 
@@ -88,9 +103,57 @@ test('an unknown adapter REFUSES with UNKNOWN_ADAPTER rather than falling back t
   assert.match(result.detail, /smtp/);
 });
 
-test('the adapter registry contains only the dry-run reference adapter in M1', async () => {
+test('the adapter registry carries the two M2 adapters and no transport', async () => {
   const { adapters } = await import('../src/stages/handoff.mjs');
-  assert.deepEqual(Object.keys(adapters), ['dry-run-json']);
+  assert.deepEqual(Object.keys(adapters).sort(), ['dry-run-json', 'eml']);
+});
+
+test('the eml adapter is selectable through config, like any other', async () => {
+  const result = await handoff.run(lead(), makeCtx({ adapter: 'eml' }));
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.output.handoff.adapter, 'eml');
+  assert.ok(result.output.handoff.filename.endsWith('.eml'));
+});
+
+// --- only approved draft hashes are exportable ----------------------------------------
+//
+// The teeth on the M1 review's finding. handoff re-checks the binding rather than trusting
+// that the queue let this through legitimately, because handoff is the stage that would act.
+
+test('a draft edited after approval REFUSES with APPROVAL_HASH_MISMATCH', async () => {
+  const tampered = lead();
+  tampered.draft = { ...tampered.draft, body: 'Hi Dana,\n\nSomething nobody approved.' };
+  // The approval still names the ORIGINAL draft, which is exactly the real-world shape.
+
+  const result = await handoff.run(tampered, makeCtx());
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['APPROVAL_HASH_MISMATCH']);
+  assert.match(result.detail, /only an approved draft is exportable/);
+});
+
+test('the mismatch names both hashes, so a reader can see which draft was authorised', async () => {
+  const tampered = lead();
+  const authorised = tampered.approval.draft_hash;
+  tampered.draft = { ...tampered.draft, subject: 'Rewritten' };
+
+  const result = await handoff.run(tampered, makeCtx());
+  assert.match(result.detail, new RegExp(authorised));
+  assert.match(result.detail, new RegExp(computeDraftHash(tampered.draft)));
+});
+
+test('an approval carrying no draft hash at all REFUSES, rather than being taken on trust', async () => {
+  const unbound = lead();
+  delete unbound.approval.draft_hash;
+  const result = await handoff.run(unbound, makeCtx());
+  assert.deepEqual(result.reason_codes, ['APPROVAL_HASH_MISMATCH']);
+});
+
+test('the artifact is named per lead AND per draft, so a prior export cannot be clobbered', async () => {
+  const { output } = await handoff.run(lead(), makeCtx());
+  assert.equal(
+    output.handoff.filename,
+    `lead-abc123456789-${output.handoff.artifact.draft_hash}.json`,
+  );
 });
 
 test('handoff is deterministic: the same lead exports the same artifact twice', async () => {

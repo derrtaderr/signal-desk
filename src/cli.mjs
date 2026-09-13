@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { executeFixtureRun, buildRun, loadFixtures } from './runner.mjs';
 import { runPipeline } from './kernel.mjs';
 import { parseLedger, verifyChain, isSealed, sealOf } from './ledger.mjs';
+import { adapters } from './adapters.mjs';
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -38,6 +39,31 @@ function pad(value, width) {
   return String(value).padEnd(width);
 }
 
+// Writes an export, and refuses to destroy a different one.
+//
+// Run scoping already separates runs, and the filename carries the draft hash, so two different
+// messages to one person land in different files. What remains is the case where a path exists
+// and the bytes DISAGREE, which means something is about to be lost. That refuses loudly.
+//
+// Identical bytes are not a collision. They are an idempotent re-run, which is what keeps
+// `signal-desk run` safe to invoke twice into the same directory.
+export class ArtifactClobberError extends Error {
+  constructor(path) {
+    super(
+      `refusing to overwrite ${path}: a different artifact already exists at that path. ` +
+        'An export that silently replaced a prior one would lose a record of something that was approved.',
+    );
+    this.name = 'ArtifactClobberError';
+  }
+}
+
+export function writeArtifact(path, contents) {
+  if (existsSync(path) && readFileSync(path, 'utf8') !== contents) {
+    throw new ArtifactClobberError(path);
+  }
+  writeFileSync(path, contents);
+}
+
 // --- run -------------------------------------------------------------------------------
 
 async function verbRun({ out, env, cwd }) {
@@ -51,10 +77,8 @@ async function verbRun({ out, env, cwd }) {
   mkdirSync(handoffDir, { recursive: true });
   const handed = report.leads.filter((lead) => lead.output?.handoff !== undefined);
   for (const lead of handed) {
-    writeFileSync(
-      join(handoffDir, `${lead.lead_id}.json`),
-      `${JSON.stringify(lead.output.handoff.artifact, null, 2)}\n`,
-    );
+    const { adapter, filename, artifact } = lead.output.handoff;
+    writeArtifact(join(handoffDir, filename), adapters[adapter].serialize(artifact));
   }
 
   out(`run ${run_id}`);
