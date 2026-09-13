@@ -155,7 +155,7 @@ async function verbRun({ out, env, cwd }) {
 
 export const LIVE_SIGNALS_DIR = 'signals';
 
-function writeRunArtifacts({ base, run_id, ledger, report, cwd, out, inputs }) {
+function writeRunArtifacts({ base, run_id, ledger, report, cwd, out, inputs, mode }) {
   const dir = join(base, run_id);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'ledger.jsonl'), ledger.toJSONL());
@@ -188,6 +188,11 @@ function writeRunArtifacts({ base, run_id, ledger, report, cwd, out, inputs }) {
             lead_id: lead.lead_id,
             draft_hash: lead.output.draft_hash,
             run_id,
+            // Which entry point composed this, so `approve` can tell the operator the command that
+            // will actually act on their decision. Telling a live operator to type `run` sends them
+            // to the fixture corpus, which cannot contain their lead, and the tool then looks broken
+            // for a reason that has nothing to do with their approval.
+            mode: mode ?? 'fixture',
             owner: lead.output.route.owner,
             reason: lead.reason_codes.join(','),
             to: lead.output.draft.to,
@@ -204,11 +209,11 @@ function writeRunArtifacts({ base, run_id, ledger, report, cwd, out, inputs }) {
   writeFileSync(join(base, LATEST_POINTER), `${run_id}\n`);
 
   const show = (path) => relative(cwd, path) || path;
-  reportRun({ out, run_id, report, show, dir, handoffDir, handed });
+  reportRun({ out, run_id, report, show, dir, handoffDir, handed, mode });
   return { dir, handed };
 }
 
-function reportRun({ out, run_id, report, show, dir, handoffDir, handed }) {
+function reportRun({ out, run_id, report, show, dir, handoffDir, handed, mode }) {
   out(`run ${run_id}`);
   out('');
   out(`  ${report.summary.PASS} passed to handoff`);
@@ -233,6 +238,7 @@ function reportRun({ out, run_id, report, show, dir, handoffDir, handed }) {
   if (report.summary.NEEDS_HUMAN > 0) {
     out(`  Act on what is parked with: node bin/signal-desk.mjs queue`);
   }
+  void mode;
 }
 
 // Dead-letters what INGEST refused, and nothing else. The boundary is argued in src/live/dlq.mjs:
@@ -291,6 +297,16 @@ async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransp
     signals,
     config,
     clock,
+    // THE LIVE APPROVAL LOOP, and omitting this broke it completely. A live lead parked, an
+    // operator approved it, and the next `run --live` parked it again, forever, so no live lead
+    // could ever reach handoff. Found by the M4 ship-check.
+    //
+    // It is the same CLASS as the M2 replay blocker: a SECOND ENTRY POINT missing a store the first
+    // one loads. Both shipped for the same reason, which is the lesson worth keeping — the fixture
+    // loop had a subprocess test walking run -> approve -> run since M2, and nothing walked it
+    // across the live path. The gap was in the test coverage of the composition, not in anybody's
+    // understanding of the queue.
+    decisions: loadDecisions(base),
     // No run clock here, on purpose: the transport stamps its own observation. See the note in
     // src/live/http.mjs about the replay misalignment that taught us the difference.
     fetch: createLiveFetcher({ transport, scrub }),
@@ -306,6 +322,7 @@ async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransp
     report,
     cwd,
     out,
+    mode: 'live',
     // Everything a replay needs and nothing a replay must not have. No key, no headers, no
     // endpoint: src/live/capture.mjs keeps those out and a test asserts it.
     inputs: {
@@ -569,7 +586,10 @@ async function verbDecide(decision, { args, out, err, env, cwd, now }) {
   out(`  recorded in ${relative(cwd, decisionsPath(runsDir(env, cwd))) || decisionsPath(runsDir(env, cwd))}`);
   out('  This decision covers that exact draft. Edit the text and it stops applying.');
   out('');
-  out('  Run again to act on it: node bin/signal-desk.mjs run');
+  // Mode-aware, because the two entry points read different signals. A live operator sent to plain
+  // `run` lands in the fixture corpus, which cannot contain their lead, and the tool then looks
+  // broken for a reason that has nothing to do with their approval.
+  out(`  Run again to act on it: node bin/signal-desk.mjs run${draft.mode === 'live' ? ' --live' : ''}`);
   return 0;
 }
 

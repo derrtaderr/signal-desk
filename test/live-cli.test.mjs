@@ -429,3 +429,93 @@ test('an empty dlq says so plainly rather than printing nothing', () => {
   });
   assert.match(stdout, /nothing/i);
 });
+
+// --- the live approval loop ------------------------------------------------------------------
+//
+// BLOCKER from the M4 ship-check, and the finding is exactly right: `executeLive` never loaded the
+// decision store, so a live lead parked, an operator approved it, and the next `run --live` parked
+// it again. Forever. No live lead could ever reach handoff, which is the whole motion.
+//
+// It is the same CLASS as the M2 replay blocker — a second entry point missing a store the first
+// one loads — and it shipped the same way: no test walked the loop across the live path. The
+// fixture loop has had a subprocess test since M2. This is that test for live mode.
+//
+// The approve step runs as a REAL SUBPROCESS, because that is the step an operator actually types
+// and it needs no transport. The two live runs are in process with fake transports, because the
+// alternative is opening a socket.
+
+test('run --live -> approve -> run --live reaches handoff, and the loop closes', async () => {
+  const runs = tmp('live-loop');
+  const signals = tmp('live-loop-signals');
+  writeSignal(signals, '0001', signalBody());
+  const fake = fakeTransport({ draft: GOOD_DRAFT, verdict: GOOD_VERDICT });
+
+  const first = await liveRun({ signalsDir: signals, runsDir: runs, transport: fake.transport });
+  assert.match(first.stdout, /1 awaiting a human/);
+  assert.match(first.stdout, /0 passed to handoff/);
+
+  // What the operator types next, as the real binary, with no key and no secret exported — a
+  // decision needs neither.
+  const queued = execFileSync(process.execPath, [BIN, 'queue'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+  const hash = /\b(draft-[0-9a-f]+)\b/.exec(queued)[1];
+
+  const approved = execFileSync(process.execPath, [BIN, 'approve', hash], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+  assert.match(approved, /approved/);
+
+  const second = await liveRun({ signalsDir: signals, runsDir: runs, transport: fake.transport });
+  assert.match(second.stdout, /1 passed to handoff/, 'the approval is honoured on the next live run');
+  assert.match(second.stdout, /0 awaiting a human/);
+
+  const runId = readFileSync(join(runs, 'latest'), 'utf8').trim();
+  const handoffs = readdirSync(join(runs, runId, 'handoffs'));
+  assert.equal(handoffs.length, 1, 'and a real artifact was written');
+});
+
+test('the approve hint tells a LIVE operator to run --live, not run', async () => {
+  // The smaller half of the same blocker. Telling a live operator to "run again" with a command
+  // that runs the FIXTURE corpus sends them to a run that cannot contain their lead, and the
+  // pipeline looks broken in a way that has nothing to do with their approval.
+  const runs = tmp('live-hint');
+  const signals = tmp('live-hint-signals');
+  writeSignal(signals, '0001', signalBody());
+  const fake = fakeTransport({ draft: GOOD_DRAFT, verdict: GOOD_VERDICT });
+  await liveRun({ signalsDir: signals, runsDir: runs, transport: fake.transport });
+
+  const queued = execFileSync(process.execPath, [BIN, 'queue'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+  const hash = /\b(draft-[0-9a-f]+)\b/.exec(queued)[1];
+  const approved = execFileSync(process.execPath, [BIN, 'approve', hash], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+
+  assert.match(approved, /run --live/, 'the hint names the mode the draft came from');
+});
+
+test('a FIXTURE approval still points at plain run, so the hint is mode-aware and not just relabelled', async () => {
+  const runs = tmp('fixture-hint');
+  execFileSync(process.execPath, [BIN, 'run'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+  const queued = execFileSync(process.execPath, [BIN, 'queue'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+  const hash = /\b(draft-[0-9a-f]+)\b/.exec(queued)[1];
+  const approved = execFileSync(process.execPath, [BIN, 'approve', hash], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
+  });
+
+  assert.match(approved, /signal-desk\.mjs run$/m);
+  assert.ok(!approved.includes('run --live'));
+});
