@@ -6,7 +6,7 @@
 //
 //   (a) fail-closed PII redaction   LANDED, see src/redaction.mjs
 //   (b) fail-closed LLM rubric      not yet
-//   (c) prose claim grounding       not yet
+//   (c) prose claim grounding       LANDED, see src/prose-claims.mjs
 //
 // The structure is a list of named rules, every one evaluated, violations collected. Rule order
 // is the reported order, so the same broken draft always refuses for the same named reason.
@@ -19,6 +19,7 @@
 
 import { pass, refuse } from '../contract.mjs';
 import { redact, assertClean } from '../redaction.mjs';
+import { groundProseClaims } from '../prose-claims.mjs';
 
 const PLACEHOLDER = /\{[a-z0-9_]+(?::[a-z0-9_]+)?\}/i;
 
@@ -62,6 +63,18 @@ function evaluateRules(lead, config) {
         detail: `the draft cites "${ref.citation}" for "${ref.field}", which is not a source this run fetched`,
       });
     }
+  }
+
+  // The same grounding discipline, applied to prose rather than to structured references.
+  // A {claim:} placeholder leaves a claim_ref the rule above can check. A sentence asserting a
+  // funding round leaves nothing, which is why M1 could not see it. See src/prose-claims.mjs.
+  rulesRun.push('prose_grounding');
+  for (const ungrounded of groundProseClaims(text, claims)) {
+    violations.push({
+      rule: 'prose_grounding',
+      code: 'UNGROUNDED_PROSE_CLAIM',
+      detail: ungrounded.detail,
+    });
   }
 
   // Fail-closed redaction, two passes with two detectors. See src/redaction.mjs for why one
