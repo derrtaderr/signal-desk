@@ -178,10 +178,17 @@ test('a draft asserting a claim no source backs is refused by the gate', async (
     'no lead reaches handoff; the ungrounded assertion is caught at the gate',
   );
 
-  // Two, not one. The poisoned template is 'executive-intro', and both leads in the priority
-  // band are routed to that play, so both receive the Series C assertion and both are caught.
+  // Every lead routed to the poisoned play is caught, not merely one of them. The count is
+  // derived rather than hardcoded, so adding a fixture to the corpus does not silently turn
+  // this into a weaker assertion than it was written to be.
+  const reachedTheGate = report.leads.filter((l) => l.output?.draft?.template === 'executive-intro');
   const refused = report.leads.filter((l) => l.reason_codes.includes('UNGROUNDED_PROSE_CLAIM'));
-  assert.equal(refused.length, 2, 'every lead routed to the poisoned play was refused');
+  assert.ok(reachedTheGate.length >= 2, 'more than one lead is routed to the poisoned play');
+  assert.equal(
+    refused.length,
+    reachedTheGate.length,
+    'every lead routed to the poisoned play was refused for its prose',
+  );
   for (const lead of refused) {
     assert.equal(lead.final_stage, 'gate');
     assert.equal(lead.final_status, 'REFUSE');

@@ -78,6 +78,69 @@ const duplicate = signed({
   payload: acme.payload,
 });
 
+// Hostile fixture 3: a poisoned enrichment source leaks PII into the draft.
+//
+// Nothing about this signal is malformed. The directory page for vertex.test carries a phone
+// number inside its industry field, the draft template interpolates that field, and a phone
+// number nobody asked for ends up in outbound mail. The gate's redaction rule catches it.
+const vertex = signed({
+  id: 'sig-9003',
+  source: 'rb2b',
+  received_at: '2026-03-01T08:59:50.000Z',
+  payload: {
+    company: { name: 'Vertex Freight', domain: 'vertex.test' },
+    contact: { name: 'Morgan Hale', email: 'morgan@vertex.test', title: 'VP Operations' },
+    intent: { page: '/pricing', visits: 4 },
+  },
+});
+
+// Hostile fixture 4: a draft every deterministic rule passes and a judge does not.
+//
+// The text is clean, grounded, well formed and the wrong message for this reader. No regex
+// catches that, which is the entire reason the rubric exists. See scripts/record-rubric.mjs,
+// where this lead's recorded verdict is a FAIL on audience_fit.
+const halcyon = signed({
+  id: 'sig-9004',
+  source: 'rb2b',
+  received_at: '2026-03-01T08:59:55.000Z',
+  payload: {
+    company: { name: 'Halcyon Systems', domain: 'halcyon.test' },
+    contact: { name: 'Priya Raman', email: 'priya@halcyon.test', title: 'VP Engineering' },
+    intent: { page: '/pricing', visits: 4 },
+  },
+});
+
+// Hostile fixture 5: a factual assertion in free prose that no source supports.
+//
+// The directory page for orbital.test describes the company as "now scaling after their Series
+// C". That string is interpolated into the body, so the draft asserts a funding round, and no
+// cited funding_stage claim backs it. M1 could not see this: the assertion is prose, not a
+// {claim:} placeholder, so it left no reference to check. The gate's prose_grounding rule does.
+const orbital = signed({
+  id: 'sig-9005',
+  source: 'rb2b',
+  received_at: '2026-03-01T09:00:00.000Z',
+  payload: {
+    company: { name: 'Orbital Dynamics', domain: 'orbital.test' },
+    contact: { name: 'Chris Okafor', email: 'chris@orbital.test', title: 'Head of Revenue' },
+    intent: { page: '/pricing', visits: 4 },
+  },
+});
+
+// Hostile fixture 6: the same person, re-signalled under a NEW signal id.
+//
+// The M1 review's finding 1. The HMAC covers `payload` and nothing else, so re-issuing a signal
+// under a fresh id leaves the signature valid and walks straight past signal-level idempotency.
+// In M1 this ran the whole pipeline a second time, consumed the same human approval again, and
+// wrote its handoff artifact over the first. Lead-level dedup refuses it as DUPLICATE_LEAD, a
+// different code from DUPLICATE_SIGNAL because it is a different event.
+const acmeAgain = signed({
+  id: 'sig-9006',
+  source: 'rb2b',
+  received_at: '2026-03-01T09:00:05.000Z',
+  payload: acme.payload,
+});
+
 const signals = [
   ['0001-acme.json', acme],
   ['0002-northwind.json', northwind],
@@ -85,6 +148,10 @@ const signals = [
   ['0004-globex.json', globex],
   ['9001-malformed-webhook.json', malformed],
   ['9002-duplicate-signal.json', duplicate],
+  ['9003-pii-in-enrichment.json', vertex],
+  ['9004-rubric-failure.json', halcyon],
+  ['9005-ungrounded-prose.json', orbital],
+  ['9006-same-contact-new-id.json', acmeAgain],
 ];
 
 // --- recordings ----------------------------------------------------------------------
@@ -113,6 +180,36 @@ const recordings = {
   'https://newsroom.test/globex.test': {
     status: 200,
     body: { claims: { funding_stage: 'public' } },
+  },
+
+  // A scraped directory page whose industry field carries a phone number. Real directories do
+  // this constantly, and a template that interpolates the field ships the number with it.
+  'https://directory.test/company/vertex.test': {
+    status: 200,
+    body: {
+      claims: {
+        employee_count: 320,
+        industry: 'freight operations, desk line 415-555-0142',
+      },
+    },
+  },
+
+  // Clean data. This lead's draft fails on judgement, not on any rule.
+  'https://directory.test/company/halcyon.test': {
+    status: 200,
+    body: { claims: { employee_count: 260, industry: 'developer tooling' } },
+  },
+
+  // An industry string smuggling a funding claim. Note there is deliberately NO newsroom
+  // recording for orbital.test, so no cited funding_stage claim exists to support it.
+  'https://directory.test/company/orbital.test': {
+    status: 200,
+    body: {
+      claims: {
+        employee_count: 210,
+        industry: 'orbital logistics software, now scaling after their Series C',
+      },
+    },
   },
 };
 

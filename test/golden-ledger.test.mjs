@@ -67,12 +67,34 @@ test('the golden ledger pins the exact refusals, so a silently relaxed rule is c
     .map((e) => `${e.stage}:${e.reason_codes.join(',')}`)
     .sort();
   assert.deepEqual(refusals, [
+    'gate:PII_IN_BODY',
+    'gate:RUBRIC_FAILED',
+    'gate:UNGROUNDED_PROSE_CLAIM',
+    'ingest:DUPLICATE_LEAD',
     'ingest:DUPLICATE_SIGNAL',
     'ingest:MALFORMED_PAYLOAD',
     'queue:REJECTED_BY_HUMAN',
     'queue:REJECTED_BY_HUMAN',
     'route:BELOW_ROUTING_FLOOR',
   ]);
+});
+
+test('the golden run exercises all three parts of the gate, each with its own refusal', () => {
+  // The demo has to SHOW the gate working, not just contain a gate. One hostile fixture per
+  // part, each refused for its own named reason.
+  const gateRefusals = goldenEntries
+    .filter((e) => e.stage === 'gate' && e.verdict === 'REFUSE')
+    .map((e) => e.reason_codes[0])
+    .sort();
+  assert.deepEqual(gateRefusals, ['PII_IN_BODY', 'RUBRIC_FAILED', 'UNGROUNDED_PROSE_CLAIM']);
+});
+
+test('the golden run distinguishes a replayed signal from a second signal for one lead', () => {
+  const ingestRefusals = goldenEntries
+    .filter((e) => e.stage === 'ingest' && e.verdict === 'REFUSE')
+    .map((e) => e.reason_codes[0])
+    .sort();
+  assert.deepEqual(ingestRefusals, ['DUPLICATE_LEAD', 'DUPLICATE_SIGNAL', 'MALFORMED_PAYLOAD']);
 });
 
 test('the golden ledger pins which leads park for a human', () => {

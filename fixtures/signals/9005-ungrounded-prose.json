@@ -1,0 +1,21 @@
+{
+  "id": "sig-9005",
+  "source": "rb2b",
+  "received_at": "2026-03-01T09:00:00.000Z",
+  "payload": {
+    "company": {
+      "name": "Orbital Dynamics",
+      "domain": "orbital.test"
+    },
+    "contact": {
+      "name": "Chris Okafor",
+      "email": "chris@orbital.test",
+      "title": "Head of Revenue"
+    },
+    "intent": {
+      "page": "/pricing",
+      "visits": 4
+    }
+  },
+  "signature": "f711109eb12e5019338d071961ced285530175c75412cba7c84491bd87793210"
+}

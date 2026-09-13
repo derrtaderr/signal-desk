@@ -1,0 +1,21 @@
+{
+  "id": "sig-9006",
+  "source": "rb2b",
+  "received_at": "2026-03-01T09:00:05.000Z",
+  "payload": {
+    "company": {
+      "name": "Acme Robotics",
+      "domain": "acme.test"
+    },
+    "contact": {
+      "name": "Dana Ruiz",
+      "email": "dana@acme.test",
+      "title": "VP Revenue Operations"
+    },
+    "intent": {
+      "page": "/pricing",
+      "visits": 4
+    }
+  },
+  "signature": "b60ae16938fca948f9661ca80f21a98857b149cd951bf9646cd54bce98b57211"
+}

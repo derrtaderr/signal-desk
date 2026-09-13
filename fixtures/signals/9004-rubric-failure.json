@@ -1,0 +1,21 @@
+{
+  "id": "sig-9004",
+  "source": "rb2b",
+  "received_at": "2026-03-01T08:59:55.000Z",
+  "payload": {
+    "company": {
+      "name": "Halcyon Systems",
+      "domain": "halcyon.test"
+    },
+    "contact": {
+      "name": "Priya Raman",
+      "email": "priya@halcyon.test",
+      "title": "VP Engineering"
+    },
+    "intent": {
+      "page": "/pricing",
+      "visits": 4
+    }
+  },
+  "signature": "6ccaa835c6ae6838c44dbc8659db02847d9e9f8dbbe34baa3fae3ca90af8e88a"
+}
