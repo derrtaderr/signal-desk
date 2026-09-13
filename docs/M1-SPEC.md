@@ -104,7 +104,19 @@ Verification is exposed as `verifyChain` and is what `replay` uses.
 2. **The design's `ctx` bullet says "ledger appender" without saying who calls it.** This lane
    resolves that to kernel-appends-returned-entries, for the determinism reason above. The
    appender is still on `ctx`.
-3. Nothing else. The stage list, the contract shape, the ledger entry shape, the CLI verb names,
+3. **The design says "HMAC over raw bytes"; M1 computes the HMAC over the canonical
+   serialisation of the already-parsed payload.** These are different threat models and the
+   difference is worth stating rather than eliding. Hashing raw bytes binds the signature to
+   exactly what the sender transmitted, so a parser disagreement cannot move the signature.
+   Hashing the canonicalised parse binds it to the payload's meaning, which survives a
+   reserialisation but trusts the parser. M1 took the second because fixture signals are
+   committed as formatted JSON files that a formatter would otherwise invalidate. Live mode
+   (M4) receives real request bodies and should verify over the raw bytes it was handed.
+4. **The design's ingest row names a DLQ; M1 ships none.** A refused signal is recorded in the
+   ledger with its reason code and is not retained anywhere a replay could pick it up. The
+   ledger carries the full picture of what was refused and why, so nothing is lost, but the
+   design's "ingestion failures → DLQ" is not implemented and no code stands in for it.
+5. Nothing else. The stage list, the contract shape, the ledger entry shape, the CLI verb names,
    the modes, and the non-scope list are implemented as written.
 
 ## Gates this lane runs on every commit
@@ -114,8 +126,10 @@ Verification is exposed as `verifyChain` and is what `replay` uses.
   CLI and asserts the README's example blocks match the real output, so a README that goes stale
   fails the suite in the same commit that staled it. The golden ledger is regenerated through
   `npm run golden:update` and is committed alongside the behaviour change that moved it.
-- **Zero-dependency check:** `test/package.test.mjs` asserts `dependencies` and `devDependencies`
-  are both empty, so the house rule cannot erode quietly.
+- **Zero-dependency check:** `test/repo-hygiene.test.mjs` asserts `dependencies` and
+  `devDependencies` are both empty, so the house rule cannot erode quietly. The same file
+  asserts that nothing under `src/` imports a non-builtin, and that no stage touches the
+  filesystem, the network, the wall clock or `process.env`.
 
 ## Ship criteria this lane is graded against (design §3)
 
