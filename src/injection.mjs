@@ -27,6 +27,8 @@
 // The injection fixture and the dashboard's XSS test are two halves of one decision; see
 // docs/M3-SPEC.md.
 
+import { redact, assertClean } from './redaction.mjs';
+
 // A matched span is capped before it leaves this module. The markup pattern can swallow a very
 // long tag, and a refusal detail travels into the ledger, the golden file and the dashboard.
 // One hostile record should not be able to flood any of them.
@@ -123,7 +125,46 @@ export function detectInjection(text) {
  * "something tried to instruct your system". The existing prose_grounding rule already quotes
  * the asserted text verbatim, so quoting the adversary is the established behaviour here and
  * withholding it would be the exception.
+ *
+ * M4 CORRECTION, and it is the case that argument missed. THE ATTACKER CHOOSES THE SPAN. The
+ * markup detector matches a whole tag, so `<a href="mailto:someone@elsewhere.test">` puts a THIRD
+ * PARTY inside the attacker's own text. Quoting it verbatim carried that address into the ledger,
+ * the golden file, the dashboard and every run anybody shared — the exact harm the gate's
+ * pii_redaction rule refuses drafts to prevent, committed one rule earlier by the safeguard
+ * itself. The injection rule reports BEFORE pii_redaction, so the leak landed and the refusal
+ * that would have stopped it never got to speak.
+ *
+ * So every span goes through redaction's OWN TWO PASSES before it is quoted, which is M2's
+ * asymmetry applied here rather than a new rule invented for it:
+ *
+ *   1. redact() removes what it recognises. The attacker's instruction survives; the third
+ *      party's data becomes a placeholder. M3's argument is preserved exactly where it was sound.
+ *   2. assertClean() looks again with the broader detectors. Anything still found means the system
+ *      cannot characterise what it is holding, so the span is WITHHELD and only the kind is named.
+ *      That is the pii_redaction rule's behaviour, for the pii_redaction rule's reason: a durable,
+ *      shareable record is the wrong place to find out what was in there.
+ *
+ * The fix sits here rather than in any one detector on purpose. Only the markup-tag pattern can
+ * capture arbitrary inner text today, because every instruction pattern matches a fixed phrase.
+ * Widening one of those later must not silently reopen this, and applying the rule to the quote
+ * rather than to the match is what makes that impossible rather than merely unlikely.
  */
 export function describeInjection(findings) {
-  return findings.map((f) => `${f.kind}-shaped content ${JSON.stringify(f.text)}`).join('; ');
+  return findings.map(quoteSpan).join('; ');
+}
+
+function quoteSpan(finding) {
+  const { redacted } = redact(finding.text);
+  const verification = assertClean(redacted);
+
+  if (!verification.clean) {
+    const kinds = [...new Set(verification.found.map((f) => f.type))].sort();
+    return (
+      `${finding.kind}-shaped content withheld from this record: redaction ran and verification ` +
+      `still found ${kinds.map((kind) => `${kind}-shaped`).join(' and ')} content inside the ` +
+      'span, so it cannot be certified clean. Read the source response itself to see it'
+    );
+  }
+
+  return `${finding.kind}-shaped content ${JSON.stringify(redacted)}`;
 }
