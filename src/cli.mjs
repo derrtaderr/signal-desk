@@ -30,12 +30,15 @@ export const USAGE = `signal-desk — a signal-to-outreach pipeline where every 
 inspected, replayed, or refused.
 
 Usage:
-  signal-desk run              Run the keyless fixture pipeline and write a decision ledger
-  signal-desk queue            List drafts parked for a human, with their content hashes
-  signal-desk approve <id>     Approve a parked draft, binding the decision to its content
-  signal-desk reject <id>      Reject a parked draft, with an optional --note
-  signal-desk explain <lead>   Print the full decision trail for one lead
-  signal-desk replay <run>     Re-execute a recorded run and verify its ledger still matches
+  node bin/signal-desk.mjs run            Run the keyless fixture pipeline and write a ledger
+  node bin/signal-desk.mjs queue          List drafts parked for a human, with their hashes
+  node bin/signal-desk.mjs approve <id>   Approve a parked draft, binding to its content
+  node bin/signal-desk.mjs reject <id>    Reject a parked draft, with an optional --note
+  node bin/signal-desk.mjs explain <lead> Print the full decision trail for one lead
+  node bin/signal-desk.mjs replay <run>   Re-execute a run and verify its ledger still matches
+
+There is no install step, so the invocation is spelled out in full. A bare signal-desk is
+not on PATH in a fresh clone.
 
 <id> is a draft hash or a lead id, and any unambiguous prefix of either will do.
 
@@ -334,7 +337,7 @@ async function verbDecide(decision, { args, out, err, env, cwd, now }) {
 async function verbExplain({ args, out, err, env, cwd }) {
   const leadId = args[0];
   if (leadId === undefined) {
-    err('explain needs a lead id. Try: signal-desk explain <lead>');
+    err('explain needs a lead id. Try: node bin/signal-desk.mjs explain <lead>');
     return 2;
   }
 
@@ -378,7 +381,7 @@ async function loadLatestLedger({ env, cwd, err }) {
 async function verbReplay({ args, out, err, env, cwd }) {
   const runId = args[0];
   if (runId === undefined) {
-    err('replay needs a run id. Try: signal-desk replay <run>');
+    err('replay needs a run id. Try: node bin/signal-desk.mjs replay <run>');
     return 2;
   }
 
