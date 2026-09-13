@@ -31,17 +31,40 @@ function lead(draftOverrides = {}, leadOverrides = {}) {
   };
 }
 
-function makeCtx(config = {}) {
+const RUBRIC = {
+  endpoint: 'https://judge.test/rubric',
+  requiredCriteria: ['claim_grounding', 'audience_fit', 'tone'],
+};
+
+// A judge that answers cleanly about whatever draft it is asked about. These tests exercise the
+// DETERMINISTIC rules, so the rubric is held constant here rather than being the thing under
+// test; src/rubric.mjs has its own file covering every way a judge can fail to certify.
+//
+// It echoes the requested hash back, which is what a real judge asked about a specific draft
+// would do, and is what the gate checks before reading the verdict.
+function passingJudge() {
+  return async (url) => ({
+    status: 200,
+    body: {
+      draft_hash: url.slice(url.lastIndexOf('/') + 1),
+      verdict: 'PASS',
+      criteria: RUBRIC.requiredCriteria.map((name) => ({ name, verdict: 'PASS', note: 'fine' })),
+    },
+  });
+}
+
+function makeCtx(config = {}, fetch = passingJudge()) {
   return createContext({
     ledger: new Ledger(),
     clock: fixtureClock({ start: '2026-03-01T09:00:00.000Z', stepMs: 1000 }),
-    fetch: recordedFetcher({}),
+    fetch,
     config: {
       mode: 'fixture',
       gate: {
         minBodyChars: 40,
         maxBodyChars: 900,
         bannedPhrases: ['guaranteed results', '100% risk free'],
+        rubric: RUBRIC,
         ...config,
       },
     },
@@ -249,4 +272,117 @@ test('gating is deterministic: the same draft gates the same way twice', async (
   const a = await gate.run(lead(), makeCtx());
   const b = await gate.run(lead(), makeCtx());
   assert.deepEqual(a.output.gate, b.output.gate);
+});
+
+// --- the LLM rubric, as the gate's last rule ------------------------------------------
+//
+// src/rubric.mjs covers every way a judge can fail to certify. What is asserted here is the
+// gate's INTEGRATION of it: that it runs, that it runs last, that it is genuinely required,
+// and that it does not run on a draft already known to be broken.
+
+test('a clean draft is not passed on the deterministic rules alone; the rubric must speak', async () => {
+  // The rubric's verdict is what the pass rests on, so a gate with no judge available REFUSES.
+  const result = await gate.run(lead(), makeCtx({}, recordedFetcher({})));
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['RUBRIC_UNAVAILABLE']);
+});
+
+test('the rubric runs last, after every deterministic rule', async () => {
+  const result = await gate.run(lead(), makeCtx());
+  const rules = result.output.gate.rules_run;
+  assert.equal(rules[rules.length - 1], 'llm_rubric');
+  assert.deepEqual(rules, [
+    'placeholder_resolution',
+    'claim_grounding',
+    'prose_grounding',
+    'pii_redaction',
+    'banned_phrases',
+    'length_bounds',
+    'llm_rubric',
+  ]);
+});
+
+test('a passing gate records the criteria the judge answered, so the pass is inspectable', async () => {
+  const result = await gate.run(lead(), makeCtx());
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(result.output.gate.rubric.map((c) => c.name), [
+    'claim_grounding',
+    'audience_fit',
+    'tone',
+  ]);
+});
+
+test('a rubric FAIL refuses with RUBRIC_FAILED and carries the judge note', async () => {
+  const failing = async (url) => ({
+    status: 200,
+    body: {
+      draft_hash: url.slice(url.lastIndexOf('/') + 1),
+      verdict: 'FAIL',
+      criteria: [
+        { name: 'claim_grounding', verdict: 'PASS', note: 'fine' },
+        { name: 'audience_fit', verdict: 'FAIL', note: 'written to the wrong operator' },
+        { name: 'tone', verdict: 'PASS', note: 'fine' },
+      ],
+    },
+  });
+  const result = await gate.run(lead(), makeCtx({}, failing));
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['RUBRIC_FAILED']);
+  assert.match(result.detail, /wrong operator/);
+});
+
+test('a draft already failing a deterministic rule never reaches the judge', async () => {
+  // Not an optimisation for its own sake. A short-circuit on the refusing path cannot weaken
+  // fail-closed, and in live mode a known-broken draft does not deserve the spend.
+  let asked = 0;
+  const counting = async (url) => {
+    asked += 1;
+    return { status: 200, body: { draft_hash: url.slice(url.lastIndexOf('/') + 1), verdict: 'PASS', criteria: [] } };
+  };
+  const result = await gate.run(lead({ body: 'Hi.' }), makeCtx({}, counting));
+  assert.deepEqual(result.reason_codes, ['DRAFT_TOO_SHORT']);
+  assert.equal(asked, 0, 'the judge was never called');
+  assert.ok(!result.output.gate.rules_run.includes('llm_rubric'));
+});
+
+test('a judge that throws refuses rather than being read as assent', async () => {
+  const broken = async () => {
+    throw new Error('judge exploded');
+  };
+  const result = await gate.run(lead(), makeCtx({}, broken));
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['RUBRIC_UNAVAILABLE']);
+});
+
+// --- the draft hash the approval will bind to -----------------------------------------
+
+test('a lead whose stated draft hash disagrees with its content REFUSES', async () => {
+  const tampered = lead();
+  tampered.draft_hash = 'draft-0000000000000000';
+  const result = await gate.run(tampered, makeCtx());
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['DRAFT_HASH_MISMATCH']);
+});
+
+test('a lead carrying the correct draft hash passes, and the rubric is asked about that hash', async () => {
+  const { computeDraftHash } = await import('../src/draft-hash.mjs');
+  const subject = lead();
+  subject.draft_hash = computeDraftHash(subject.draft);
+
+  const asked = [];
+  const recording = async (url) => {
+    asked.push(url);
+    return {
+      status: 200,
+      body: {
+        draft_hash: url.slice(url.lastIndexOf('/') + 1),
+        verdict: 'PASS',
+        criteria: RUBRIC.requiredCriteria.map((name) => ({ name, verdict: 'PASS', note: 'fine' })),
+      },
+    };
+  };
+
+  const result = await gate.run(subject, makeCtx({}, recording));
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(asked, [`${RUBRIC.endpoint}/${subject.draft_hash}`]);
 });

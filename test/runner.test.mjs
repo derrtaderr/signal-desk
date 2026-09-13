@@ -144,3 +144,38 @@ test('the fixture corpus files are valid JSON with a trailing newline', () => {
     JSON.parse(text);
   }
 });
+
+test('the committed rubric recordings match what the recorder produces', async () => {
+  // Freshness, the same discipline as the golden ledger. A rubric recording is addressed by
+  // draft hash, so changing a template by one character moves every hash and strands every
+  // recording. Regenerate with `node scripts/record-rubric.mjs` in the same commit.
+  const { recordRubric, serializeRubric } = await import('../scripts/record-rubric.mjs');
+  const onDisk = readFileSync(join(FIXTURES_DIR, 'rubric.json'), 'utf8');
+  assert.equal(
+    onDisk,
+    serializeRubric(await recordRubric()),
+    'fixtures/rubric.json is stale. Run `node scripts/record-rubric.mjs` in the commit that staled it.',
+  );
+});
+
+test('every draft that reaches the gate has a rubric recording addressed to its own hash', async () => {
+  // The property that makes the rubric meaningful rather than decorative: a recorded verdict
+  // exists for this exact draft, not for the lead that happens to carry it.
+  const { ledger, report } = await executeFixtureRun();
+  const { recordings } = loadFixtures();
+  const endpoint = defaultConfig.gate.rubric.endpoint;
+
+  const reachedGate = ledger.entries().filter((e) => e.stage === 'gate');
+  assert.ok(reachedGate.length > 0, 'the demo exercises the gate');
+
+  for (const lead of report.leads) {
+    if (lead.output?.draft_hash === undefined) continue;
+    const url = `${endpoint}/${lead.output.draft_hash}`;
+    assert.ok(recordings[url], `a judge response is recorded for ${url}`);
+    assert.equal(
+      recordings[url].body.draft_hash,
+      lead.output.draft_hash,
+      'and it names the draft it judged',
+    );
+  }
+});

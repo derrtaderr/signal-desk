@@ -5,7 +5,7 @@
 // M2 is landing the rest, one part per commit, and this header says which are in:
 //
 //   (a) fail-closed PII redaction   LANDED, see src/redaction.mjs
-//   (b) fail-closed LLM rubric      not yet
+//   (b) fail-closed LLM rubric      LANDED, see src/rubric.mjs
 //   (c) prose claim grounding       LANDED, see src/prose-claims.mjs
 //
 // The structure is a list of named rules, every one evaluated, violations collected. Rule order
@@ -20,6 +20,8 @@
 import { pass, refuse } from '../contract.mjs';
 import { redact, assertClean } from '../redaction.mjs';
 import { groundProseClaims } from '../prose-claims.mjs';
+import { computeDraftHash } from '../draft-hash.mjs';
+import { evaluateRubric } from '../rubric.mjs';
 
 const PLACEHOLDER = /\{[a-z0-9_]+(?::[a-z0-9_]+)?\}/i;
 
@@ -145,11 +147,28 @@ function evaluateRules(lead, config) {
 export const gate = {
   name: 'gate',
 
-  run(lead, ctx) {
+  async run(lead, ctx) {
+    const config = ctx.config.gate ?? {};
     let report;
+    let draftHash;
 
     try {
-      report = evaluateRules(lead, ctx.config.gate ?? {});
+      // The hash is always computed from the CONTENT, never trusted from the lead, because
+      // content is what an approval binds to. A stated hash that disagrees with the content it
+      // claims to describe means the draft moved between stages, and a draft that moved is a
+      // draft nobody approved.
+      draftHash = computeDraftHash(lead.draft);
+      if (lead.draft_hash !== undefined && lead.draft_hash !== draftHash) {
+        return refuse({
+          reason: 'DRAFT_HASH_MISMATCH',
+          detail:
+            `the lead carries draft hash ${lead.draft_hash} and its draft content hashes to ` +
+            `${draftHash}; the draft changed after it was composed`,
+          output: { ...lead },
+        });
+      }
+
+      report = evaluateRules(lead, config);
     } catch (error) {
       // The gate could not form an opinion. That is not permission.
       return refuse({
@@ -158,6 +177,10 @@ export const gate = {
       });
     }
 
+    // The deterministic rules speak first. A draft already known to be broken does not need a
+    // judge's opinion, and in live mode it would not deserve the spend either. This
+    // short-circuit cannot weaken fail-closed, because it only ever happens on a path that is
+    // already refusing.
     if (report.violations.length > 0) {
       const [first] = report.violations;
       return refuse({
@@ -167,6 +190,28 @@ export const gate = {
       });
     }
 
+    let judgment;
+    try {
+      judgment = await evaluateRubric(draftHash, ctx, config.rubric);
+    } catch (error) {
+      return refuse({
+        reason: 'GATE_ERROR',
+        detail: `the rubric could not be evaluated, so the gate refuses: ${error.message}`,
+      });
+    }
+
+    report.rules_run.push('llm_rubric');
+
+    if (!judgment.ok) {
+      report.violations.push({ rule: 'llm_rubric', code: judgment.code, detail: judgment.detail });
+      return refuse({
+        reason: judgment.code,
+        detail: judgment.detail,
+        output: { ...lead, gate: report },
+      });
+    }
+
+    report.rubric = judgment.criteria;
     return pass({ output: { ...lead, gate: report } });
   },
 };
