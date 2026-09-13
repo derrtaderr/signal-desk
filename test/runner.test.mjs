@@ -22,7 +22,7 @@ test('loadFixtures reads signals in sorted filename order, not filesystem order'
 test('loadFixtures reads the recordings and the recorded approvals', () => {
   const { recordings, approvals } = loadFixtures();
   assert.ok(Object.keys(recordings).length > 0);
-  assert.ok(Object.keys(approvals).length > 0);
+  assert.ok(approvals.length > 0);
 });
 
 test('the run id is derived from the inputs, never generated randomly', () => {
@@ -127,13 +127,43 @@ test('every committed signal carries a signature that covers its payload', async
   }
 });
 
-test('the approvals file keys match lead ids the pipeline actually derives', async () => {
+test('every recorded approval binds to a draft hash, never to a lead id', async () => {
+  // The M2 shape. M1's lead-keyed map is what let one decision release a draft nobody read.
   const { approvals } = loadFixtures();
-  const { ledger } = await executeFixtureRun();
-  const derived = new Set(ledger.entries().map((e) => e.lead_id));
-  for (const leadId of Object.keys(approvals)) {
-    assert.ok(derived.has(leadId), `approval key ${leadId} matches a lead the run produced`);
+  assert.ok(Array.isArray(approvals), 'the decision store is a list of records');
+  assert.ok(approvals.length > 0);
+  for (const record of approvals) {
+    assert.match(record.draft_hash, /^draft-[0-9a-f]{16}$/, 'bound to content');
+    assert.match(record.lead_id, /^lead-[0-9a-f]{12}$/, 'and recording the lead it was about');
+    assert.ok(['approve', 'reject'].includes(record.decision));
+    assert.ok(typeof record.by === 'string' && record.by !== '');
   }
+});
+
+test('every recorded decision names a draft this run actually composed', async () => {
+  const { approvals } = loadFixtures();
+  const { report } = await executeFixtureRun();
+  const composed = new Map(
+    report.leads
+      .filter((l) => l.output?.draft_hash !== undefined)
+      .map((l) => [l.output.draft_hash, l.lead_id]),
+  );
+  for (const record of approvals) {
+    assert.ok(composed.has(record.draft_hash), `decision ${record.draft_hash} matches a real draft`);
+    assert.equal(composed.get(record.draft_hash), record.lead_id, 'and the lead it names');
+  }
+});
+
+test('the committed approvals match what the recorder produces', async () => {
+  // Freshness. Decisions are bound to draft hashes, so a template edit strands every one of
+  // them. Regenerate with `node scripts/record-approvals.mjs` in the same commit.
+  const { recordApprovals } = await import('../scripts/record-approvals.mjs');
+  const { serializeFixture } = await import('../scripts/draft-corpus.mjs');
+  assert.equal(
+    readFileSync(join(FIXTURES_DIR, 'approvals.json'), 'utf8'),
+    serializeFixture(await recordApprovals()),
+    'fixtures/approvals.json is stale. Run `node scripts/record-approvals.mjs`.',
+  );
 });
 
 test('the fixture corpus files are valid JSON with a trailing newline', () => {

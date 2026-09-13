@@ -27,7 +27,7 @@ machine as on anyone else's.
 <!-- verified-block: run -->
 ```console
 $ node bin/signal-desk.mjs run
-run run-6f98451a03b0
+run run-45f7e6dcb15a
 
   1 passed to handoff
   1 awaiting a human
@@ -41,8 +41,8 @@ run run-6f98451a03b0
   lead-e557482af15d      queue     REFUSE       REJECTED_BY_HUMAN
   sig-9001               ingest    REFUSE       MALFORMED_PAYLOAD
 
-  ledger    runs/run-6f98451a03b0/ledger.jsonl
-  handoffs  1 dry run artifact(s) in runs/run-6f98451a03b0/handoffs
+  ledger    runs/run-45f7e6dcb15a/ledger.jsonl
+  handoffs  1 dry run artifact(s) in runs/run-45f7e6dcb15a/handoffs
 
   Nothing was sent. This tool never sends mail.
   Inspect a decision with: signal-desk explain <lead>
@@ -61,7 +61,7 @@ stage stood on.
 ```console
 $ node bin/signal-desk.mjs explain lead-29e94419ba7e
 lead lead-29e94419ba7e
-run  run-6f98451a03b0
+run  run-45f7e6dcb15a
 
   2026-03-01T09:00:00.000Z  ingest    PASS         system
       evidence  signal:sig-1001
@@ -76,8 +76,10 @@ run  run-6f98451a03b0
   2026-03-01T09:00:05.000Z  gate      PASS         system
   2026-03-01T09:00:06.000Z  queue     PASS         human
       reasons   APPROVED_BY_HUMAN
-      detail    dana.reviewer approved this draft at 2026-03-01T08:56:00.000Z
+      detail    dana.reviewer approved draft draft-b66622be1a11d3db at 2026-03-01T08:56:00.000Z
+      evidence  draft:draft-b66622be1a11d3db
   2026-03-01T09:00:07.000Z  queue     PASS         system
+      evidence  draft:draft-b66622be1a11d3db
   2026-03-01T09:00:08.000Z  handoff   PASS         system
       evidence  https://directory.test/company/acme.test
                 https://newsroom.test/acme.test
@@ -86,13 +88,15 @@ run  run-6f98451a03b0
 ```
 
 Note the `human` actor on the queue line. A person approved that draft, and the ledger records
-who and when, alongside the machine decisions. A refusal reads the same way.
+who, when, and **which draft**. An approval binds to a hash of the message content, never to
+the lead, so changing a single character of the text leaves the old decision covering nothing
+and the lead parks again as `APPROVAL_STALE`. A refusal reads the same way.
 
 <!-- verified-block: explain-refuse -->
 ```console
 $ node bin/signal-desk.mjs explain sig-9001
 lead sig-9001
-run  run-6f98451a03b0
+run  run-45f7e6dcb15a
 
   2026-03-01T09:00:31.000Z  ingest    REFUSE       system
       reasons   MALFORMED_PAYLOAD
@@ -111,10 +115,10 @@ makes the same decisions.
 
 <!-- verified-block: replay -->
 ```console
-$ node bin/signal-desk.mjs replay run-6f98451a03b0
+$ node bin/signal-desk.mjs replay run-45f7e6dcb15a
 hash chain verified across 33 entries
 seal verified: 1 passed, 1 parked, 4 refused, 6 in total
-replay of run-6f98451a03b0 is an exact match
+replay of run-45f7e6dcb15a is an exact match
 33 entries, identical bytes, chain intact
 ```
 
