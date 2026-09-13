@@ -192,6 +192,7 @@ contacted a stranger's server on the strength of a run it could not finish.
 | No signals directory | the path it looked for, plus `--signals <dir>` and a pointer to the README | 2 |
 | Empty signals directory | "holds no .json payload files, so there is nothing to run" | 2 |
 | Live run completes | the same run summary as fixture mode, plus a replay line and a dlq line if anything was dead-lettered | 0 |
+| Unknown or malformed flag | the flag it did not understand, and what the verb accepts | 2 |
 
 Both credential checks run BEFORE any file is read or any directory is created, and a test asserts
 the runs directory is still empty after a keyless invocation.
@@ -215,6 +216,34 @@ with the ledger recording PASS.
 | `SOURCE_INSECURE` | a payload cited a plaintext URL |
 | `EVIDENCE_FUTURE_DATED` | a source claimed a record from the future |
 
+### The live approval loop
+
+The same four steps as the fixture loop, and the whole point is that it IS the same loop:
+
+```
+run --live   parks a live draft, and says how many are awaiting a human
+queue        lists it with its content hash
+approve      records the decision, bound to that hash
+run --live   the approved draft is the only thing that moves; it reaches handoff
+```
+
+A walker should check the hint at the end of `approve`: it must name `run --live` for a live draft and
+plain `run` for a fixture one. Sending a live operator to `run` lands them in the demo corpus, which
+cannot contain their lead, and the tool then looks broken for a reason unrelated to their approval.
+
+**This loop did not close in the first M4 submission** — `executeLive` never loaded the decision store,
+so an approved live lead parked again forever. It is the same class as the M2 dead end this map
+records at the bottom: a path the user is told to take that cannot complete. Both are now walked by
+subprocess tests rather than by inspection.
+
+### Unknown flags
+
+`run --live=true` used to run the FIXTURE corpus and exit 0. A walker cannot detect that from the
+output, which is exactly why it mattered: the run summary looks correct because the run WAS correct,
+just not the one anybody asked for. Accepted flags are declared per verb; anything else exits 2 naming
+the flag and listing what the verb takes. `--flag=value` is refused even for accepted flags, because
+supporting one spelling and ignoring the other is how this happened.
+
 ### The DLQ recovery path
 
 This is the one genuinely new LOOP in M4, and it is the live counterpart of the approval loop:
@@ -233,11 +262,22 @@ to replay it would invite somebody to retry it until it passed.
 
 ### Replay, as a live user experiences it
 
-`replay <run>` on a live run needs no key and opens no socket, because the run captured what it
-observed into `inputs.json`. The user-visible promise is that handing somebody the run directory
-hands them the ability to re-derive every decision in it without your credentials. A walker should
-check the wording carefully: a fixture run is REPRODUCIBLE and a live run is REPLAYABLE FROM ITS
-CAPTURE, and the README says which is which rather than letting one word carry both.
+`replay <run>` on a live run never needs the model key and opens no socket, because the run captured
+what it observed into `inputs.json`. What it can PROVE depends on what you shared, and the output says
+so rather than blurring it:
+
+| The replayer has | Output | Exit |
+|---|---|---|
+| the run directory | chain verified, seal verified, then plainly which checks it did NOT make and the variable that would allow them | 0 |
+| ...plus the matching `SIGNAL_DESK_SIGNAL_SECRET` | all of that, an exact byte match, and every payload signature re-verified | 0 |
+| ...plus a DIFFERENT secret | `SECRET_MISMATCH`, naming the problem as a configuration difference rather than a code change | 1 |
+
+A walker should check the middle and bottom rows most carefully, because the failure they replace is a
+byte mismatch reported as "the inputs or the wiring have changed" — which sends a reader hunting a
+code change that does not exist. The capture holds a fingerprint of the secret, never the secret.
+
+And the wording: a fixture run is REPRODUCIBLE and a live run is REPLAYABLE FROM ITS CAPTURE, and the
+README says which is which rather than letting one word carry both.
 
 ## Recovery paths
 

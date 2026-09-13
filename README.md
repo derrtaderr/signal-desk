@@ -256,12 +256,21 @@ prose. Both refuse, and the refusal quotes what it saw, because an operator cann
 to drop a source from their config on the strength of "something tried to instruct your system".
 
 Worth being precise about what that rule does and does not buy, because the marketing version is
-bigger than the honest one. In fixture mode the draft stage is a mechanical template fill, so an
-instruction smuggled into a source has nothing to instruct: there is no interpreter in the loop.
-This pipeline is not immune because it defends well. It is immune because there is no model in
-the drafting path yet, and M4 ends that. What the rule does today is make the payload **visible** —
-flagged by enrich where it entered, refused by the gate where it landed — and that is the part
-that survives M4.
+bigger than the honest one, and M4 changed which version is true.
+
+**In fixture mode there is still no interpreter in the loop.** The draft stage is a mechanical
+template fill, so an instruction smuggled into a source has nothing to instruct. What the rule buys
+there is that the payload is **visible** — flagged by enrich where it entered, refused by the gate
+where it landed.
+
+**In live mode there is a model, and the defence is doing real work.** Enrichment text enters the
+drafting prompt, wrapped in a fence whose delimiter is derived from a digest of the claim set, so a
+hostile source cannot emit the closer that would end its own fence. The fence is defence in depth.
+What **enforces** the rule is the same two things that enforced it in M3 — the injection detector at
+enrich, and the gate's rules on the composed output — because both run on text the model produced
+rather than on the prompt it was given. That is deliberate: a prompt is a request, and a gate is a
+check. Nothing is stripped from the prompt either, because sanitising it would hide the payload from
+the two rules built to catch it.
 
 ## What enrichment refuses
 
@@ -440,7 +449,15 @@ reason code.
 Stated plainly, because "bring your own key" is not the same as "nothing leaves the machine".
 
 **What is sent to the model provider.** The company name, the contact's **first** name, their
-title, the page they visited, and the cited claims with their citation URLs. That is all.
+title, the page they visited, and the cited claims with their citation URLs. That is all. It goes to
+`https://api.anthropic.com/v1/messages` and nowhere else.
+
+**Disclosed, because you should not have to infer it:** that endpoint was **never called during this
+milestone's development.** Every test in this repo drives injected fake transports, and the request
+shape is built to the published Messages API contract rather than confirmed against a live response.
+`test/live-smoke.test.mjs` exists to confirm it against the real API and is skipped unless you set
+both `SIGNAL_DESK_LIVE_SMOKE=1` and a key. **Your first live run is the first real call this code has
+made**, so make it a small one.
 
 **What is never sent to the model provider.** The recipient's email address. Writing the message
 does not require it, so it stays in this process and the draft's `to` field is filled in locally.
@@ -611,7 +628,10 @@ somebody closes it.
   that cannot answer leaves the lead `IDENTITY_UNVERIFIED`, and the pipeline will still write to
   a person no source confirmed. Absence never reads as confirmation, which is the property that
   matters, but an unverified identity is not a verified one.
-- **The injection rule makes a payload visible; it is not what stops it working.** Nothing is
-  stopping it working today, because fixture-mode drafting is a template fill with no model in
-  it. That changes in M4, and this boundary is the one to press on when reviewing it.
+- **The injection rule is lexical and deterministic, which bounds what it can catch.** In live mode
+  it is now doing real work — there is a model in the drafting path — and it works by pattern, so a
+  payload phrased in a way none of its patterns match will not be flagged. What stands behind it is
+  the claim-grounding gate, which does not care how a sentence was induced: an assertion with no
+  cited claim behind it is refused whatever talked the model into writing it. The prompt fence is
+  defence in depth and is not load-bearing.
 - **Deduplication is per run.** A lead processed on Monday can be processed again on Friday.
