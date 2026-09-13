@@ -46,11 +46,29 @@ export function recordedFetcher(recordings) {
   };
 }
 
-export function createContext({ ledger, clock, fetch, config, run_id }) {
+// THE SECOND SEAM, added in M4. See docs/M4-SPEC.md §4 for the argument.
+//
+// M2 said live mode would be "a fetcher swap and nothing else". The SHAPE of that claim carries
+// over exactly — a stage reaches the outside world through one injected async function, does no
+// I/O itself, and stays testable with plain objects. The assumption that one `fetch(url)` serves
+// both jobs does not. Evidence retrieval is a GET addressed by URL. A completion is a POST with
+// provider headers, a credential and a structured body.
+//
+// Forcing the second through the first would mean either putting the key on `ctx.config`, which is
+// hashed into the run id and one careless stringify away from every artifact, or letting a stage
+// read process.env, which test/repo-hygiene.test.mjs forbids and should keep forbidding. So there
+// are two seams, and the key lives in neither of them: it is captured inside the live model
+// transport's closure and a stage never sees it.
+//
+// `model` ABSENT is not a fallback. A stage configured to use a model and handed no model seam
+// refuses with a named code. That is "silence is not a pass", one layer out.
+
+export function createContext({ ledger, clock, fetch, model, config, run_id }) {
   return Object.freeze({
     run_id,
     clock,
     fetch,
+    model,
     config: Object.freeze({ ...config }),
     ledger: Object.freeze({
       append: (entry) => ledger.append(entry),
