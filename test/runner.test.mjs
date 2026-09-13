@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { loadFixtures, computeRunId, executeFixtureRun, FIXTURES_DIR } from '../src/runner.mjs';
+import { loadFixtures, computeRunId, executeFixtureRun, buildRun, FIXTURES_DIR } from '../src/runner.mjs';
 import { defaultConfig, pipeline } from '../src/config.mjs';
 
 test('loadFixtures reads every signal file in the corpus', () => {
@@ -208,4 +208,72 @@ test('every draft that reaches the gate has a rubric recording addressed to its 
       'and it names the draft it judged',
     );
   }
+});
+
+// --- recordings enter the run id, new in M4 ---------------------------------------------------
+//
+// M4 spec §7, closing the M2 review carry.
+//
+// A run id is a claim: THESE INPUTS, through THIS WIRING, produce THIS RUN. Enrichment responses
+// are inputs. Leaving them out of the id meant two runs over materially different evidence could
+// share one, and `replay`'s diagnosis collapsed into "the ledger differs" — which is equally true
+// of a code change, an evidence change and a wiring change, and tells a reader nothing about
+// which of the three happened.
+//
+// With recordings inside the id: a changed response changes the id and replay says THE INPUTS
+// CHANGED. Unchanged inputs with a different ledger says THE CODE CHANGED. Different problems,
+// different fixes, and now distinguishable.
+
+test('changing a recorded response changes the run id, because a response is an input', () => {
+  const fixtures = loadFixtures();
+  const changed = JSON.parse(JSON.stringify(fixtures.recordings));
+  const url = Object.keys(changed).find((key) => changed[key]?.body?.claims !== undefined);
+  changed[url].body.claims.employee_count = 999;
+
+  assert.notEqual(
+    computeRunId({ pipeline, config: defaultConfig, signals: fixtures.signals, recordings: fixtures.recordings }),
+    computeRunId({ pipeline, config: defaultConfig, signals: fixtures.signals, recordings: changed }),
+  );
+});
+
+test('the id is stable across two reads of the same recordings, so a replay still matches', () => {
+  const a = loadFixtures();
+  const b = loadFixtures();
+  assert.equal(
+    computeRunId({ pipeline, config: defaultConfig, signals: a.signals, recordings: a.recordings }),
+    computeRunId({ pipeline, config: defaultConfig, signals: b.signals, recordings: b.recordings }),
+  );
+});
+
+test('the id covers the whole recording map, not the subset a run happened to read', () => {
+  // A per-lead subset would make the id depend on which leads refused early, and that is an
+  // OUTPUT. An id that moves when a decision moves cannot be used to ask whether the inputs moved.
+  const fixtures = loadFixtures();
+  const extra = { ...fixtures.recordings, 'https://never.test/read': { status: 200, body: { as_of: 'x' } } };
+  assert.notEqual(
+    computeRunId({ pipeline, config: defaultConfig, signals: fixtures.signals, recordings: fixtures.recordings }),
+    computeRunId({ pipeline, config: defaultConfig, signals: fixtures.signals, recordings: extra }),
+  );
+});
+
+test('a run with no recordings at all still has an id, which is the live-mode case', () => {
+  // A live run has captured nothing when its id is computed, so the seed is empty and what
+  // distinguishes one live run from the next is its clock start, which lives in config.
+  const fixtures = loadFixtures();
+  const id = computeRunId({ pipeline, config: defaultConfig, signals: fixtures.signals, recordings: {} });
+  assert.match(id, /^run-[0-9a-f]{12}$/);
+});
+
+test('buildRun folds the corpus recordings into the id it computes', async () => {
+  const { run_id } = buildRun();
+  const fixtures = loadFixtures();
+  assert.equal(
+    run_id,
+    computeRunId({
+      pipeline,
+      config: { ...defaultConfig, queue: { ...defaultConfig.queue, approvals: [...fixtures.approvals] } },
+      signals: fixtures.signals,
+      recordings: fixtures.recordings,
+    }),
+  );
 });

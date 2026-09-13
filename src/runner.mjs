@@ -53,13 +53,28 @@ export function loadFixtures(dir = FIXTURES_DIR) {
 // order the files happened to be listed in. The kernel sorts leads before processing them
 // for the same reason, and an id that moved when the directory listing moved would undo
 // that work.
-export function computeRunId({ pipeline: stages, config, signals }) {
+// RECORDINGS ARE PART OF THE ID, added in M4 on the M2 review's recommendation. See
+// docs/M4-SPEC.md §7 for the full argument; the short version is that the enrichment responses
+// ARE inputs, and an id blind to half its inputs cannot answer the question it exists to answer.
+// Without them, `replay` reports "the ledger differs", which is equally true of a code change, an
+// evidence change and a wiring change. With them, a changed response changes the id and replay
+// says the INPUTS changed; an unchanged id with a different ledger says the CODE changed.
+//
+// The WHOLE map, never the subset a run happened to read. A per-lead subset would make the id
+// depend on which leads refused early, and that is an output. An id that moves when a decision
+// moves cannot be used to ask whether the inputs moved.
+//
+// A live run passes {} here, because it has captured nothing at the moment its id is computed.
+// What distinguishes one live run from the next is its clock start, which lives in config and is
+// therefore already covered.
+export function computeRunId({ pipeline: stages, config, signals, recordings = {} }) {
   const digest = createHash('sha256')
     .update(
       canonical({
         stages: stages.map((stage) => stage.name),
         config,
         signals: signals.map((signal) => canonical(signal)).sort(),
+        recordings,
       }),
     )
     .digest('hex');
@@ -83,7 +98,12 @@ export function buildRun({
     queue: { ...config.queue, approvals: [...fixtures.approvals, ...decisions] },
   };
 
-  const run_id = computeRunId({ pipeline: stages, config: runConfig, signals: fixtures.signals });
+  const run_id = computeRunId({
+    pipeline: stages,
+    config: runConfig,
+    signals: fixtures.signals,
+    recordings: fixtures.recordings,
+  });
   const ledger = new Ledger();
   const ctx = createContext({
     ledger,
