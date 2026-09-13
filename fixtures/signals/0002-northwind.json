@@ -1,0 +1,21 @@
+{
+  "id": "sig-1002",
+  "source": "rb2b",
+  "received_at": "2026-03-01T08:58:00.000Z",
+  "payload": {
+    "company": {
+      "name": "Northwind Logistics",
+      "domain": "northwind.test"
+    },
+    "contact": {
+      "name": "Sam Patel",
+      "email": "sam@northwind.test",
+      "title": "Demand Generation Manager"
+    },
+    "intent": {
+      "page": "/demo",
+      "visits": 2
+    }
+  },
+  "signature": "af636c923a47472e5e4c4555f8bbcd0a9e69c855fa319923b9846e9da143043a"
+}

@@ -1,0 +1,54 @@
+{
+  "https://directory.test/company/acme.test": {
+    "status": 200,
+    "body": {
+      "claims": {
+        "employee_count": 240,
+        "industry": "industrial robotics"
+      }
+    }
+  },
+  "https://newsroom.test/acme.test": {
+    "status": 200,
+    "body": {
+      "claims": {
+        "funding_stage": "series B"
+      }
+    }
+  },
+  "https://directory.test/company/northwind.test": {
+    "status": 200,
+    "body": {
+      "claims": {
+        "employee_count": 180,
+        "industry": "freight logistics"
+      }
+    }
+  },
+  "https://directory.test/company/tiny.test": {
+    "status": 200,
+    "body": {
+      "claims": {
+        "employee_count": 6,
+        "industry": "consulting"
+      }
+    }
+  },
+  "https://directory.test/company/globex.test": {
+    "status": 200,
+    "body": {
+      "claims": {
+        "employee_count": 420,
+        "industry": "industrial manufacturing"
+      }
+    }
+  },
+  "https://newsroom.test/globex.test": {
+    "status": 200,
+    "body": {
+      "claims": {
+        "funding_stage": "public"
+      }
+    }
+  }
+}

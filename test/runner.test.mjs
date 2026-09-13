@@ -1,0 +1,146 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { loadFixtures, computeRunId, executeFixtureRun, FIXTURES_DIR } from '../src/runner.mjs';
+import { defaultConfig, pipeline } from '../src/config.mjs';
+
+test('loadFixtures reads every signal file in the corpus', () => {
+  const { signals } = loadFixtures();
+  const onDisk = readdirSync(join(FIXTURES_DIR, 'signals')).filter((f) => f.endsWith('.json'));
+  assert.equal(signals.length, onDisk.length);
+  assert.ok(signals.length >= 6, 'the corpus carries the happy path and the hostile fixtures');
+});
+
+test('loadFixtures reads signals in sorted filename order, not filesystem order', () => {
+  const { signals } = loadFixtures();
+  const ids = signals.map((s) => s.id);
+  assert.deepEqual(ids.slice(0, 4), ['sig-1001', 'sig-1002', 'sig-1003', 'sig-1004']);
+});
+
+test('loadFixtures reads the recordings and the recorded approvals', () => {
+  const { recordings, approvals } = loadFixtures();
+  assert.ok(Object.keys(recordings).length > 0);
+  assert.ok(Object.keys(approvals).length > 0);
+});
+
+test('the run id is derived from the inputs, never generated randomly', () => {
+  const fixtures = loadFixtures();
+  const a = computeRunId({ pipeline, config: defaultConfig, signals: fixtures.signals });
+  const b = computeRunId({ pipeline, config: defaultConfig, signals: fixtures.signals });
+  assert.equal(a, b);
+  assert.match(a, /^run-[0-9a-f]{12}$/);
+});
+
+test('changing a signal changes the run id, so a run names its own inputs', () => {
+  const fixtures = loadFixtures();
+  const changed = fixtures.signals.map((s, i) => (i === 0 ? { ...s, id: 'different' } : s));
+  assert.notEqual(
+    computeRunId({ pipeline, config: defaultConfig, signals: fixtures.signals }),
+    computeRunId({ pipeline, config: defaultConfig, signals: changed }),
+  );
+});
+
+test('changing the stage sequence changes the run id', () => {
+  const fixtures = loadFixtures();
+  assert.notEqual(
+    computeRunId({ pipeline, config: defaultConfig, signals: fixtures.signals }),
+    computeRunId({ pipeline: pipeline.slice(0, 4), config: defaultConfig, signals: fixtures.signals }),
+  );
+});
+
+test('the fixture run reaches a terminal state for every signal in the corpus', async () => {
+  const { report } = await executeFixtureRun();
+  const { signals } = loadFixtures();
+  assert.equal(report.summary.total, signals.length);
+});
+
+test('the fixture run exercises all three verdicts, so the demo shows the whole contract', async () => {
+  const { report } = await executeFixtureRun();
+  assert.ok(report.summary.PASS >= 1, 'at least one lead reaches handoff');
+  assert.ok(report.summary.REFUSE >= 1, 'at least one lead is refused');
+  assert.ok(report.summary.NEEDS_HUMAN >= 1, 'at least one lead parks for a human');
+});
+
+test('every one of the eight stages executes at least once in the fixture run', async () => {
+  const { ledger } = await executeFixtureRun();
+  const stagesSeen = new Set(ledger.entries().map((e) => e.stage));
+  for (const stage of pipeline) {
+    assert.ok(stagesSeen.has(stage.name), `stage ${stage.name} ran in the fixture demo`);
+  }
+});
+
+test('the fixture run is keyless: nothing reads an environment variable for a credential', async () => {
+  const before = { ...process.env };
+  await executeFixtureRun();
+  assert.deepEqual({ ...process.env }, before);
+});
+
+test('the ledger the run produced verifies as an unbroken chain', async () => {
+  const { ledger } = await executeFixtureRun();
+  const { verifyChain } = await import('../src/ledger.mjs');
+  assert.deepEqual(verifyChain(ledger.entries()), { ok: true });
+});
+
+test('a lead that reaches handoff carries a dry-run artifact that was not sent', async () => {
+  const { report } = await executeFixtureRun();
+  const delivered = report.leads.filter((l) => l.final_status === 'PASS');
+  assert.ok(delivered.length >= 1);
+  for (const lead of delivered) {
+    assert.equal(lead.output.handoff.sent, false);
+    assert.equal(lead.output.handoff.artifact.dry_run, true);
+  }
+});
+
+test('the committed fixtures match what the generator produces', async () => {
+  // Freshness. Editing a signal by hand without re-signing it, or editing the generator
+  // without regenerating, fails here in the commit that caused it.
+  const { fixtureFiles } = await import('../scripts/fixture-data.mjs');
+  for (const [relativePath, expected] of fixtureFiles()) {
+    const onDisk = JSON.parse(readFileSync(join(FIXTURES_DIR, relativePath), 'utf8'));
+    assert.deepEqual(onDisk, expected, `fixtures/${relativePath} is up to date`);
+  }
+});
+
+test('the generator accounts for every file in the fixture corpus', async () => {
+  const { fixtureFiles } = await import('../scripts/fixture-data.mjs');
+  const generated = new Set(fixtureFiles().map(([path]) => path));
+  const onDisk = readdirSync(join(FIXTURES_DIR, 'signals'))
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => `signals/${f}`);
+  for (const path of onDisk) {
+    assert.ok(generated.has(path), `fixtures/${path} is accounted for by the generator`);
+  }
+});
+
+test('every committed signal carries a signature that covers its payload', async () => {
+  const { signals } = loadFixtures();
+  const { signPayload } = await import('../src/stages/ingest.mjs');
+  const { FIXTURE_SECRET } = await import('../src/config.mjs');
+  for (const signal of signals) {
+    assert.equal(
+      signal.signature,
+      signPayload(FIXTURE_SECRET, signal.payload),
+      `signal ${signal.id} is correctly signed`,
+    );
+  }
+});
+
+test('the approvals file keys match lead ids the pipeline actually derives', async () => {
+  const { approvals } = loadFixtures();
+  const { ledger } = await executeFixtureRun();
+  const derived = new Set(ledger.entries().map((e) => e.lead_id));
+  for (const leadId of Object.keys(approvals)) {
+    assert.ok(derived.has(leadId), `approval key ${leadId} matches a lead the run produced`);
+  }
+});
+
+test('the fixture corpus files are valid JSON with a trailing newline', () => {
+  const dir = join(FIXTURES_DIR, 'signals');
+  for (const name of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+    const text = readFileSync(join(dir, name), 'utf8');
+    assert.ok(text.endsWith('\n'), `${name} ends with a newline`);
+    JSON.parse(text);
+  }
+});

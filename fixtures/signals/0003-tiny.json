@@ -1,0 +1,21 @@
+{
+  "id": "sig-1003",
+  "source": "rb2b",
+  "received_at": "2026-03-01T08:58:30.000Z",
+  "payload": {
+    "company": {
+      "name": "Tiny Corp",
+      "domain": "tiny.test"
+    },
+    "contact": {
+      "name": "Alex Doe",
+      "email": "alex@tiny.test",
+      "title": "Marketing Intern"
+    },
+    "intent": {
+      "page": "/blog/hello",
+      "visits": 1
+    }
+  },
+  "signature": "1e5304ee33371215498f1ba3622bcafec44c36bbc6f8c147290a2303d56444be"
+}
