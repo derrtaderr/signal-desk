@@ -369,3 +369,61 @@ ungrounded-prose draft, each naming its own reason code. `queue`, `approve` and 
 exercisable end to end against the demo corpus. `replay` verifies a sealed chain and refuses a
 truncated one. The adversarial test's M1-gap assertion is flipped to REFUSE and its comment is
 gone.
+
+---
+
+## Implementation addendum, written after the lane ran
+
+The spec above was committed first, before any code. This section records what the
+implementation actually taught, because a spec that is quietly edited to match what got built
+is not a spec.
+
+### Things the spec did not anticipate
+
+1. **The decision store became a hash-chained ledger, not a plain JSONL list.** The spec said
+   decisions append to `runs/approvals.jsonl` and left the format open. Writing it made the
+   argument obvious: rewriting *which draft* a decision covers is precisely the attack the
+   content hash exists to prevent, so the file holding the binding needs the same
+   tamper-evidence as the run ledger. Decisions are now ledger entries with `actor: human` and
+   `stage: approval`, and a broken chain refuses every command that reads them. This also
+   satisfies the dispatch's "record the decision into the ledger (actor: human)" more directly
+   than the run-ledger path alone did.
+
+2. **"Latest run" was a real bug, and the tests found it rather than review.**
+   `test/approval-workflow.test.mjs` failed intermittently, twice in eight runs. The cause: both
+   `queue` and `explain` resolved the latest run by sorting run ids and taking the last. A run
+   id is a hash of the inputs and carries no temporal ordering, and approving a draft changes
+   the inputs, so the next run's id sorted *before* the previous one about half the time. The
+   consequence was user-visible and serious: `queue` would show a stale run's parked drafts and
+   invite a human to approve a draft already decided. `run` now writes an explicit pointer.
+   `explain` had the same defect since M1.
+
+3. **A second decision on one draft needed a rule.** The spec's resolution table assumed at most
+   one decision per hash. An append-only store makes two possible, and a human changing their
+   mind is a legitimate thing to do. The latest decision binds; the superseded one stays on
+   record, because the history of what was decided and when is the product.
+
+4. **Approving by prefix.** Not in the spec and obviously necessary once the output existed:
+   nobody retypes a 16-character hash. An unambiguous prefix of a draft hash or a lead id
+   resolves; an ambiguous one is an error naming every match, never a guess.
+
+### Things the spec got right and the implementation confirmed
+
+- Typing the prose-grounding check was the load-bearing decision. The corpus now ships a
+  poisoned `industry` string containing "Series C", and an untyped check would have to pass it.
+- Short-circuiting the rubric behind the deterministic rules cost nothing and is provable: a
+  counting fetcher shows the judge is never called for a draft already known broken.
+- `APPROVAL_STALE` as NEEDS_HUMAN rather than REFUSE reads correctly in the run summary, where
+  it sits next to `AWAITING_APPROVAL` and means the same thing to the operator.
+
+### One assertion I got wrong, recorded because the reviewer will see the diff
+
+When flipping the M1-gap adversarial test, I asserted one lead would be refused for its prose.
+Two were, because the poisoned play is `executive-intro` and both priority-band leads route to
+it. Adding the hostile fixtures later made it five. The assertion now derives the expected count
+from the leads actually routed to that play, so growing the corpus cannot silently weaken it.
+
+### Counts
+
+Base `ce0b9de` (merged M1): 331 tests. This lane: 519 tests, all green. Golden ledger 32 -> 55
+entries. Demo corpus 6 -> 10 signals, 4 -> 8 refusals, one survivor throughout.
