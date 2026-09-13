@@ -212,3 +212,108 @@ test('ingest records the signal id as evidence, so the trail names what it read'
   const result = await ingest.run(validSignal(), ctx);
   assert.deepEqual(result.evidence_refs, ['signal:sig-1']);
 });
+
+// --- HMAC over raw bytes, new in M4 -----------------------------------------------------------
+//
+// M1's divergence register: "the design says HMAC over raw bytes; M1 computes the HMAC over the
+// canonical serialisation of the already-parsed payload", and it said live mode "receives real
+// request bodies and should verify over the raw bytes it was handed". This is that.
+//
+// The two are DIFFERENT THREAT MODELS rather than two spellings of one. Hashing the canonical
+// parse binds the signature to the payload's MEANING, which survives a reserialisation and trusts
+// the parser. Hashing raw bytes binds it to exactly what the sender transmitted, so a parser
+// disagreement cannot move the signature. M1 took the first because fixture signals are committed
+// as formatted JSON a formatter would otherwise invalidate. Live receives bytes off the wire.
+//
+// AND THE SECOND HALF IS THE POINT. Verifying bytes and then acting on a parse nobody compared
+// against those bytes keeps the threat model's name without its content. Raw mode asserts that the
+// parse it was handed agrees with a fresh parse of the same bytes.
+
+import { signRaw } from '../src/stages/ingest.mjs';
+
+function rawCtx(overrides = {}) {
+  const ledger = new Ledger();
+  return createContext({
+    ledger,
+    clock: fixtureClock({ start: '2026-03-01T09:00:00.000Z', stepMs: 1000 }),
+    fetch: recordedFetcher({}),
+    config: {
+      mode: 'live',
+      ingest: { secret: SECRET, replayWindowMs: 300000, signatureOver: 'raw', ...overrides },
+    },
+    run_id: 'run-test',
+  });
+}
+
+// What a live loader hands the stage: the exact bytes it read, plus the signature that came
+// alongside them, plus the parse those bytes produced.
+function rawSignal(bytes, signature) {
+  const raw = bytes ?? JSON.stringify({
+    id: 'sig-1',
+    source: 'rb2b',
+    received_at: '2026-03-01T08:59:00.000Z',
+    payload: validPayload(),
+  });
+  return { ...JSON.parse(raw), raw, signature: signature ?? signRaw(SECRET, raw) };
+}
+
+test('raw mode verifies the HMAC over the exact bytes the sender transmitted', async () => {
+  const result = await ingest.run(rawSignal(), rawCtx());
+  assert.equal(result.status, 'PASS');
+});
+
+test('whitespace anywhere in the bytes changes the signature, which is the whole point', async () => {
+  // Under canonical hashing this reserialisation is invisible. Under raw hashing it is a different
+  // message, because it IS a different message: the sender sent these bytes and not those.
+  const bytes = JSON.stringify(
+    { id: 'sig-1', source: 'rb2b', received_at: '2026-03-01T08:59:00.000Z', payload: validPayload() },
+    null,
+    2,
+  );
+  const compact = JSON.stringify(JSON.parse(bytes));
+  const result = await ingest.run(rawSignal(bytes, signRaw(SECRET, compact)), rawCtx());
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['SIGNATURE_INVALID']);
+});
+
+test('a signature valid over the CANONICAL payload is refused in raw mode', async () => {
+  const signal = rawSignal();
+  signal.signature = signPayload(SECRET, signal.payload);
+  const result = await ingest.run(signal, rawCtx());
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['SIGNATURE_INVALID']);
+});
+
+test('a parse that disagrees with the bytes it claims to come from is REFUSED', async () => {
+  // The second half of the threat model. An attacker who can get one parser to read the bytes one
+  // way and this pipeline to act on another reading has defeated a byte-exact signature while
+  // leaving it perfectly valid.
+  const signal = rawSignal();
+  signal.payload = { ...signal.payload, company: { name: 'Harborline', domain: 'harborline.test' } };
+  const result = await ingest.run(signal, rawCtx());
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['SIGNATURE_INVALID']);
+  assert.match(result.detail, /bytes|parse/i);
+});
+
+test('raw mode with no bytes attached REFUSES rather than falling back to canonical hashing', async () => {
+  // The silent downgrade this must never become. A loader that forgot to attach the bytes would
+  // otherwise get a signature check that passes for a weaker reason than the one configured.
+  const signal = rawSignal();
+  delete signal.raw;
+  const result = await ingest.run(signal, rawCtx());
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['SIGNATURE_MISSING']);
+  assert.match(result.detail, /raw/i);
+});
+
+test('canonical remains the default, so the fixture corpus verifies exactly as it did', async () => {
+  const { ctx } = makeCtx();
+  assert.equal((await ingest.run(validSignal(), ctx)).status, 'PASS');
+});
+
+test('the raw bytes do not travel into the lead, so nothing downstream re-parses them', async () => {
+  const result = await ingest.run(rawSignal(), rawCtx());
+  assert.equal(result.output.raw, undefined);
+  assert.equal(result.output.signature, undefined);
+});

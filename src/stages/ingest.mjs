@@ -17,6 +17,82 @@ export function signPayload(secret, payload) {
   return createHmac('sha256', secret).update(canonical(payload)).digest('hex');
 }
 
+// --- HMAC over raw bytes, new in M4 --------------------------------------------------------
+//
+// M1's divergence register named this gap and said live mode should close it: "the design says
+// HMAC over raw bytes; M1 computes the HMAC over the canonical serialisation of the already-parsed
+// payload... Live mode (M4) receives real request bodies and should verify over the raw bytes it
+// was handed."
+//
+// These are two THREAT MODELS, not two spellings of one idea.
+//
+//   canonical  Binds the signature to the payload's MEANING. Survives a reserialisation, and
+//              trusts the parser. Correct for a corpus of formatted JSON files a formatter would
+//              otherwise invalidate, which is exactly what fixture mode is.
+//   raw        Binds it to what the sender actually transmitted. A parser disagreement cannot move
+//              the signature, because the signature never went near a parser.
+//
+// THE SECOND HALF IS WHERE THE VALUE IS, and skipping it would keep the threat model's name
+// without its content. Verifying bytes and then acting on a parse nobody compared against those
+// bytes leaves the whole attack open: somebody who can make one parser read the bytes one way and
+// this pipeline act on another reading has defeated a byte-exact signature that still verifies
+// perfectly. So raw mode also asserts that the parse it was handed agrees with a fresh parse of
+// the same bytes.
+//
+// A raw-mode run with no bytes attached REFUSES. It does not fall back to canonical hashing,
+// because a loader that forgot to attach the bytes would then get a signature check that passes
+// for a weaker reason than the one the operator configured, and say nothing about it.
+
+export function signRaw(secret, raw) {
+  return createHmac('sha256', secret).update(raw, 'utf8').digest('hex');
+}
+
+// The fields a live loader attaches beside the parse. They are verification material, not part of
+// the lead, and they are stripped before anything downstream sees the signal.
+const TRANSPORT_FIELDS = ['raw', 'signature'];
+
+function verifyRawBytes(signal, secret) {
+  const { raw } = signal;
+  if (typeof raw !== 'string' || raw === '') {
+    return {
+      reason: 'SIGNATURE_MISSING',
+      detail:
+        'ingest is configured to verify over raw bytes and this signal carries none. Falling back ' +
+        'to hashing the parse would verify a weaker thing than the one configured, silently',
+    };
+  }
+  if (!isNonEmptyString(signal.signature)) {
+    return { reason: 'SIGNATURE_MISSING', detail: 'a secret is configured but the signal carries no signature' };
+  }
+  if (!equalSignatures(signal.signature, signRaw(secret, raw))) {
+    return { reason: 'SIGNATURE_INVALID', detail: 'the signature does not cover these bytes' };
+  }
+
+  let reparsed;
+  try {
+    reparsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      reason: 'SIGNATURE_INVALID',
+      detail: `the signed bytes are not parseable JSON, so what was signed and what would be acted on cannot be the same: ${error.message}`,
+    };
+  }
+
+  const acted = { ...signal };
+  for (const field of TRANSPORT_FIELDS) delete acted[field];
+  if (canonical(reparsed) !== canonical(acted)) {
+    return {
+      reason: 'SIGNATURE_INVALID',
+      detail:
+        'the signature covers these bytes and the parse this run was handed says something else. ' +
+        'A byte-exact signature over bytes nobody re-read is a signature over a different message ' +
+        'than the one about to be acted on',
+    };
+  }
+
+  return null;
+}
+
 function equalSignatures(a, b) {
   const left = Buffer.from(String(a), 'utf8');
   const right = Buffer.from(String(b), 'utf8');
@@ -67,20 +143,27 @@ export const ingest = {
     }
 
     if (isNonEmptyString(config.secret)) {
-      if (!isNonEmptyString(signal.signature)) {
-        return refuse({
-          reason: 'SIGNATURE_MISSING',
-          evidence_refs: [`signal:${signal.id}`],
-          detail: 'a secret is configured but the signal carries no signature',
-        });
-      }
-      const expected = signPayload(config.secret, signal.payload);
-      if (!equalSignatures(signal.signature, expected)) {
-        return refuse({
-          reason: 'SIGNATURE_INVALID',
-          evidence_refs: [`signal:${signal.id}`],
-          detail: 'the signature does not cover this payload',
-        });
+      if ((config.signatureOver ?? 'canonical') === 'raw') {
+        const problem = verifyRawBytes(signal, config.secret);
+        if (problem !== null) {
+          return refuse({ ...problem, evidence_refs: [`signal:${signal.id}`] });
+        }
+      } else {
+        if (!isNonEmptyString(signal.signature)) {
+          return refuse({
+            reason: 'SIGNATURE_MISSING',
+            evidence_refs: [`signal:${signal.id}`],
+            detail: 'a secret is configured but the signal carries no signature',
+          });
+        }
+        const expected = signPayload(config.secret, signal.payload);
+        if (!equalSignatures(signal.signature, expected)) {
+          return refuse({
+            reason: 'SIGNATURE_INVALID',
+            evidence_refs: [`signal:${signal.id}`],
+            detail: 'the signature does not cover this payload',
+          });
+        }
       }
     }
 
