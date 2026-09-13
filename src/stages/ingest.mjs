@@ -231,6 +231,11 @@ export const ingest = {
         company: { ...signal.payload.company, domain },
         contact: { ...signal.payload.contact, email },
         intent: signal.payload.intent ?? {},
+        // Where the SIGNAL says the evidence is, kept deliberately distinct from `citations`,
+        // which is what enrich actually fetched. Collapsing the two names would let a URL nobody
+        // fetched read as a citation, which is the one thing the enrichment discipline forbids.
+        // Live mode reads these; fixture mode's configured templates ignore them. See M4 spec §6.
+        sources: Array.isArray(signal.payload.sources) ? [...signal.payload.sources] : [],
       },
       evidence_refs: [`signal:${signal.id}`],
     });

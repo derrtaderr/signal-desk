@@ -249,7 +249,18 @@ export const enrich = {
   name: 'enrich',
 
   async run(lead, ctx) {
-    const sources = ctx.config.enrich?.sources ?? [];
+    // WHERE THE SOURCE URLS COME FROM, new in M4. 'config' is the templated vendor URL every prior
+    // milestone used. 'signal' is live mode: the payload names its own citation URLs.
+    //
+    // The second needs no provider account, so a stranger with a key and a JSON endpoint can run
+    // the whole motion; it keeps every vendor out of the open repo, which DESIGN.md's non-scope
+    // requires; and it makes "every claim binds to a citation fetched in this run" LITERAL. The
+    // payload asserts where the evidence is and the pipeline fetches exactly that, so a claim with
+    // no fetched citation behind it is structurally impossible rather than merely checked for.
+    const sources =
+      (ctx.config.enrich?.sourcesFrom ?? 'config') === 'signal'
+        ? lead.sources ?? []
+        : ctx.config.enrich?.sources ?? [];
     const claims = [];
     const citations = [];
     const entries = [];
@@ -275,11 +286,16 @@ export const enrich = {
       try {
         response = await ctx.fetch(url);
       } catch (error) {
+        // The transport names WHICH kind of failure this was, because it is the only thing that
+        // knows. A timeout, an oversized body and a plaintext citation are three different problems
+        // with three different fixes, and flattening them into SOURCE_UNAVAILABLE would throw away
+        // the only information an operator could act on. A fixture-mode NoRecordingError carries no
+        // stage code, so it still reports SOURCE_UNAVAILABLE exactly as it did.
         entries.push({
           verdict: 'PASS',
-          reason_codes: ['SOURCE_UNAVAILABLE'],
+          reason_codes: [error?.stageCode ?? 'SOURCE_UNAVAILABLE'],
           evidence_refs: [url],
-          detail: `${url} had no recording: ${error.message}`,
+          detail: `${url} did not answer usefully: ${error.message}`,
         });
         continue;
       }

@@ -742,3 +742,82 @@ test('an INJECTION_MARKED entry does not carry a third-party address into the le
   assert.ok(!marked.detail.includes('morgan@harborline.test'));
   assert.match(marked.detail, /\[redacted:email\]/);
 });
+
+// --- sources named by the signal, new in M4 ---------------------------------------------------
+//
+// M4 spec §6. `enrich.sourcesFrom` is 'config' (default, the templated vendor URLs every prior
+// milestone used) or 'signal', where the payload names its own citation URLs.
+//
+// The third reason in the spec is the load-bearing one and it is worth repeating here: this makes
+// "every claim binds to a citation fetched in this run" LITERAL. The payload asserts where the
+// evidence is, the pipeline fetches exactly that, and a claim with no fetched citation behind it
+// becomes structurally impossible rather than merely checked for. It also needs no provider
+// account, so a stranger with a key and a JSON endpoint can run the whole motion, and it keeps
+// every vendor out of the repo, which DESIGN.md's non-scope requires.
+
+test('in signal mode, enrich fetches exactly the URLs the payload named', async () => {
+  const A = 'https://a.test/acme';
+  const B = 'https://b.test/acme';
+  const asked = [];
+  const ctx = createContext({
+    ledger: new Ledger(),
+    clock: fixtureClock({ start: '2026-03-01T09:00:00.000Z', stepMs: 1000 }),
+    fetch: async (url) => {
+      asked.push(url);
+      return { status: 200, body: { as_of: '2026-02-20T00:00:00.000Z', claims: { employee_count: 240 } } };
+    },
+    config: { mode: 'live', enrich: { sourcesFrom: 'signal', sources: ['https://never.test/{domain}'] } },
+    run_id: 'run-test',
+  });
+
+  const result = await enrich.run(lead({ sources: [A, B] }), ctx);
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(asked, [A, B], 'the configured template is not consulted in signal mode');
+  assert.deepEqual(result.output.citations, [A, B].sort());
+});
+
+test('a signal naming no sources REFUSES, because there is nothing to ground a claim in', async () => {
+  const ctx = createContext({
+    ledger: new Ledger(),
+    clock: fixtureClock({ start: '2026-03-01T09:00:00.000Z', stepMs: 1000 }),
+    fetch: async () => { throw new Error('nothing should be fetched'); },
+    config: { mode: 'live', enrich: { sourcesFrom: 'signal' } },
+    run_id: 'run-test',
+  });
+  const result = await enrich.run(lead({ sources: [] }), ctx);
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['NO_CITED_CLAIMS']);
+});
+
+test('a transport failure is reported with the code the transport named, not a generic one', async () => {
+  // The transport is the only thing that knows whether a source timed out, answered enormously, or
+  // was cited over plaintext. Flattening all three into SOURCE_UNAVAILABLE would throw away the
+  // only information an operator could act on.
+  const ctx = createContext({
+    ledger: new Ledger(),
+    clock: fixtureClock({ start: '2026-03-01T09:00:00.000Z', stepMs: 1000 }),
+    fetch: async (url) => {
+      const error = new Error(`${url} exceeded the byte cap`);
+      error.stageCode = 'SOURCE_OVERSIZED';
+      throw error;
+    },
+    config: { mode: 'live', enrich: { sourcesFrom: 'signal' } },
+    run_id: 'run-test',
+  });
+
+  const result = await enrich.run(lead({ sources: ['https://huge.test/acme'] }), ctx);
+  assert.equal(result.status, 'REFUSE');
+  const flagged = result.entries.find((e) => e.reason_codes?.includes('SOURCE_OVERSIZED'));
+  assert.ok(flagged, 'the ledger says WHICH kind of failure this was');
+});
+
+test('a missing recording still reports SOURCE_UNAVAILABLE, so fixture mode is unchanged', async () => {
+  const result = await enrich.run(lead(), makeCtx({}));
+  assert.ok(result.entries.some((e) => e.reason_codes?.includes('SOURCE_UNAVAILABLE')));
+});
+
+test('config mode remains the default, so nothing in the corpus changes behaviour', async () => {
+  const result = await enrich.run(lead(), makeCtx(recordings));
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(result.output.citations.sort(), [DIRECTORY, NEWSROOM].sort());
+});
