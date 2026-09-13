@@ -66,13 +66,21 @@ export function computeRunId({ pipeline: stages, config, signals }) {
   return `run-${digest.slice(0, 12)}`;
 }
 
-export function buildRun({ fixtures = loadFixtures(), config = defaultConfig, stages = pipeline } = {}) {
-  // The recorded approvals are folded into the config the queue stage reads. They are an M1
-  // stand-in for the approval workflow, and they are part of the run's inputs, so they are
-  // part of what the run id covers.
+export function buildRun({
+  fixtures = loadFixtures(),
+  config = defaultConfig,
+  stages = pipeline,
+  // Decisions recorded locally by `approve` / `reject`, layered OVER the shipped corpus. The
+  // default is none, so executeFixtureRun and every determinism test see exactly the corpus a
+  // fresh clone sees. The CLI is what passes real ones in.
+  decisions = [],
+} = {}) {
+  // The human decisions are folded into the config the queue stage reads. They are part of the
+  // run's inputs, so they are part of what the run id covers: approving something and running
+  // again is a different run, and its id says so.
   const runConfig = {
     ...config,
-    queue: { ...config.queue, approvals: fixtures.approvals },
+    queue: { ...config.queue, approvals: [...fixtures.approvals, ...decisions] },
   };
 
   const run_id = computeRunId({ pipeline: stages, config: runConfig, signals: fixtures.signals });
