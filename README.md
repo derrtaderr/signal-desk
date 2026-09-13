@@ -94,7 +94,7 @@ run  run-cc483f9d8434
       evidence  signal:sig-1001
   2026-03-01T09:00:01.000Z  enrich    PASS         system
       reasons   IDENTITY_CONFIRMED
-      detail    https://people.test/dana@acme.test confirms Dana Ruiz at acme.test
+      detail    https://people.test/dana@acme.test confirms Dana Ruiz at acme.test on 3 of 3 fields (company_domain, name, email)
       evidence  https://people.test/dana@acme.test
   2026-03-01T09:00:02.000Z  enrich    PASS         system
       evidence  https://directory.test/company/acme.test

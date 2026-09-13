@@ -159,9 +159,17 @@ async function verifyIdentity(lead, ctx) {
     return unverified(`${url} answered 200 and carried no identity record`);
   }
 
+  // Counted, not assumed. A record carrying none of the fields in the table above used to skip
+  // every iteration and fall out of the loop into the confirmation below, so an EMPTY identity
+  // record read as CONFIRMED — the one path in this module where absence read as confirmation,
+  // which is the exact thing its own rule forbids. Corpus-unreachable, because every recorded
+  // person response is complete; reachable on the first live person-lookup that answers thin.
+  // PR #3 review finding, closed before any live identity source could reach it.
+  const compared = [];
   for (const field of IDENTITY_FIELDS) {
     const recorded = identity[field.name];
     if (recorded === undefined) continue;
+    compared.push(field.name);
     const claimed = field.claimed(lead);
     if (normaliseName(recorded) === normaliseName(claimed)) continue;
 
@@ -177,13 +185,27 @@ async function verifyIdentity(lead, ctx) {
     };
   }
 
+  if (compared.length === 0) {
+    return unverified(
+      `${url} answered 200 with an identity record that carries no comparable field, so this ` +
+        `run compared no field against the signal (it looks for ` +
+        `${IDENTITY_FIELDS.map((f) => f.name).join(', ')})`,
+    );
+  }
+
+  // The bar is ONE comparison, not three. A source that confirms the address and says nothing
+  // about the company is still evidence, and demanding a complete record would be the mandatory
+  // person-level enrichment policy M3 declined to adopt. The count is on the record so a reader
+  // can weigh the confirmation instead of taking the word CONFIRMED at face value.
   return {
     entries: [
       {
         verdict: 'PASS',
         reason_codes: ['IDENTITY_CONFIRMED'],
         evidence_refs: [url],
-        detail: `${url} confirms ${lead.contact.name} at ${lead.company.domain}`,
+        detail:
+          `${url} confirms ${lead.contact.name} at ${lead.company.domain} on ` +
+          `${compared.length} of ${IDENTITY_FIELDS.length} fields (${compared.join(', ')})`,
       },
     ],
   };
