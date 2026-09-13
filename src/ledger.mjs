@@ -1,6 +1,27 @@
 // The decision ledger. Append-only JSONL, hash-chained so that editing or dropping a
 // line is detectable. This is the artifact a reader inspects, so its integrity is the
 // product, not a nicety.
+//
+// WHAT THE CHAIN DOES AND DOES NOT PROVE. Worth stating precisely, because "hash-chained"
+// invites a stronger reading than it earns.
+//
+//   It proves ORDER and INTEGRITY. No line in a written file can be edited or reordered
+//   without the chain saying so.
+//
+//   It does not prove COMPLETENESS. Truncation leaves a chain that verifies clean, which is
+//   what the terminal seal below exists to catch.
+//
+//   It does not prove AUTHENTICITY. The chain is UNKEYED: every hash is sha256 over public
+//   inputs, so anyone who can run this code can regenerate a whole ledger, drop whatever they
+//   like, and produce a chain and a seal that verify perfectly. Tamper-EVIDENT against edits to
+//   a file, not tamper-PROOF against someone who can rewrite it from scratch.
+//
+// What catches a recomputed ledger is RE-EXECUTION, not verification, which is why `replay`
+// does both and reports them separately: the chain and the seal answer "was this file changed
+// after it was written", and only re-running the pipeline and comparing bytes answers "is this
+// what the code actually decides". Closing the gap at the integrity layer would need a signing
+// key, and a key is a hosted-secret story this tool deliberately does not have. Pinned by two
+// tests in test/seal.test.mjs and recorded as a deferral in docs/M2-SPEC.md.
 
 import { createHash } from 'node:crypto';
 
