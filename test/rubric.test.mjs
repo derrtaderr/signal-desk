@@ -227,3 +227,65 @@ test('an empty requiredCriteria list REFUSES, because a rubric asking nothing ce
   assert.equal(result.ok, false);
   assert.equal(result.code, 'RUBRIC_MALFORMED');
 });
+
+// --- a FAIL is a FAIL, whether or not the config asked for that criterion -------------------
+//
+// The ship-check found the code and the spec disagreeing here. docs/M2-SPEC.md promised "any
+// single criterion FAIL" refuses; the code only inspected the REQUIRED ones, so a judge
+// volunteering a failure outside the configured list was ignored and the draft passed.
+//
+// Reconciled toward the code matching the spec, because the alternative inverts this module's
+// one rule. "Silence is not a pass" exists so an unanswered question cannot be read as
+// approval. Dropping a volunteered FAIL is the same mistake pointed the other way: treating
+// something the judge actually SAID as if it had not been said. A judge that spots a problem
+// nobody thought to ask about is the most valuable thing a judge does.
+
+test('a FAIL on a criterion outside requiredCriteria still REFUSES', async () => {
+  const volunteered = judgment({
+    criteria: [
+      ...judgment().criteria,
+      { name: 'legal_risk', verdict: 'FAIL', note: 'names a competitor in a defamatory way' },
+    ],
+  });
+  const result = await evaluateRubric(DRAFT_HASH, ctxWith(recordedAs(volunteered)), CONFIG);
+  assert.equal(result.ok, false, 'a volunteered failure is not discarded');
+  assert.equal(result.code, 'RUBRIC_FAILED');
+});
+
+test('the refusal names the volunteered criterion and its note', async () => {
+  const volunteered = judgment({
+    criteria: [
+      ...judgment().criteria,
+      { name: 'legal_risk', verdict: 'FAIL', note: 'names a competitor in a defamatory way' },
+    ],
+  });
+  const result = await evaluateRubric(DRAFT_HASH, ctxWith(recordedAs(volunteered)), CONFIG);
+  assert.match(result.detail, /legal_risk/);
+  assert.match(result.detail, /defamatory/);
+});
+
+test('an extra criterion that PASSES does not refuse, and is reported', async () => {
+  // The rule is "any FAIL refuses", not "any extra criterion is suspicious".
+  const extra = judgment({
+    criteria: [...judgment().criteria, { name: 'legal_risk', verdict: 'PASS', note: 'clean' }],
+  });
+  const result = await evaluateRubric(DRAFT_HASH, ctxWith(recordedAs(extra)), CONFIG);
+  assert.equal(result.ok, true);
+  assert.ok(
+    result.criteria.some((c) => c.name === 'legal_risk'),
+    'everything the judge answered is reported, not just what was asked',
+  );
+});
+
+test('a required criterion is still mandatory; volunteering others does not substitute', async () => {
+  const wrongQuestions = judgment({
+    criteria: [
+      { name: 'claim_grounding', verdict: 'PASS', note: 'ok' },
+      { name: 'audience_fit', verdict: 'PASS', note: 'ok' },
+      { name: 'legal_risk', verdict: 'PASS', note: 'ok' },
+    ],
+  });
+  const result = await evaluateRubric(DRAFT_HASH, ctxWith(recordedAs(wrongQuestions)), CONFIG);
+  assert.equal(result.code, 'RUBRIC_MALFORMED');
+  assert.match(result.detail, /tone/, 'the unanswered required criterion is named');
+});
