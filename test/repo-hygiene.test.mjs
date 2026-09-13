@@ -41,6 +41,32 @@ test('no source file contains a control character outside tab and newline', () =
   assert.deepEqual(offenders, []);
 });
 
+// Two of this suite's gates compare bytes: the golden ledger is asserted equal to the run's
+// output, and the README's console blocks are asserted equal to the CLI's real stdout. Both
+// fail on a clone made with core.autocrlf=true, and they fail for a reason that has nothing
+// to do with the change under review. Checking the attributes in is what makes the byte
+// comparison mean the same thing on every machine.
+test('.gitattributes pins LF on every file type the byte-comparing tests read', () => {
+  const attributes = readFileSync(join(ROOT, '.gitattributes'), 'utf8');
+  const rules = attributes
+    .split('\n')
+    .map((line) => line.replace(/#.*$/, '').trim())
+    .filter((line) => line !== '');
+
+  assert.ok(
+    rules.some((rule) => /^\*\s+text=auto\s+eol=lf$/.test(rule)),
+    '.gitattributes declares `* text=auto eol=lf` as the repo-wide default',
+  );
+
+  // The extensions the golden-ledger and readme-examples tests actually compare.
+  for (const extension of ['.jsonl', '.md', '.json', '.mjs']) {
+    assert.ok(
+      rules.some((rule) => rule.startsWith(`*${extension} `) && rule.includes('eol=lf')),
+      `.gitattributes pins eol=lf for ${extension}, which a byte-comparing test reads`,
+    );
+  }
+});
+
 test('the repo declares no runtime and no dev dependencies', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   assert.deepEqual(pkg.dependencies, {}, 'zero runtime dependencies');

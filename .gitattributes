@@ -1,0 +1,18 @@
+# Line endings are part of this repo's contract, not a preference.
+#
+# Two gates in the test suite compare bytes rather than meaning. test/golden-ledger.test.mjs
+# asserts the fixture run reproduces test/golden/fixture-run.jsonl exactly, and
+# test/readme-examples.test.mjs asserts the README's console blocks equal the CLI's real
+# stdout line for line. On a clone made with core.autocrlf=true both fail, for a reason that
+# has nothing to do with whatever change is under review.
+#
+# Checking these in is what makes a byte comparison mean the same thing on every machine.
+
+* text=auto eol=lf
+
+# Named explicitly for the types the byte-comparing tests read, so the intent survives
+# someone relaxing the wildcard above.
+*.jsonl text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.mjs   text eol=lf
