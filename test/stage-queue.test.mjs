@@ -292,3 +292,43 @@ test('the queue stage reads no clock at all, which is WHY approvals cannot expir
   );
   assert.doesNotMatch(source, /ctx\.clock/, 'the queue stage has no clock to compare an age against');
 });
+
+// --- the human decision, as fields rather than as prose --------------------------------
+
+test('the human approval entry carries who decided and when as FIELDS, not only in a sentence', async () => {
+  // The dashboard's decisions view needs the actor, and a renderer that parses an English
+  // sentence to find it would be a second, weaker account of the same fact. The seal's `head`
+  // duplicates its own `prev` link for the same reason: a consumer should read a field.
+  const subject = lead();
+  const result = await queue.run(
+    subject,
+    makeCtx({ approvals: [approvalFor(subject, { note: 'looks right to me' })] }),
+  );
+
+  const human = result.entries.find((e) => e.actor === 'human');
+  assert.equal(human.by, 'dana.reviewer');
+  assert.equal(human.at, '2026-03-01T08:55:00.000Z');
+  assert.equal(human.decision, 'approve');
+  assert.equal(human.draft_hash, subject.draft_hash);
+  assert.equal(human.note, 'looks right to me');
+});
+
+test('the human rejection entry carries the same fields, so both decisions read alike', async () => {
+  const subject = lead();
+  const result = await queue.run(
+    subject,
+    makeCtx({ approvals: [approvalFor(subject, { decision: 'reject', note: 'open opportunity' })] }),
+  );
+
+  const human = result.entries.find((e) => e.actor === 'human');
+  assert.equal(human.by, 'dana.reviewer');
+  assert.equal(human.decision, 'reject');
+  assert.equal(human.draft_hash, subject.draft_hash);
+});
+
+test('a decision with no note carries no note field, rather than an empty one', async () => {
+  const subject = lead();
+  const result = await queue.run(subject, makeCtx({ approvals: [approvalFor(subject)] }));
+  const human = result.entries.find((e) => e.actor === 'human');
+  assert.equal('note' in human, false);
+});
