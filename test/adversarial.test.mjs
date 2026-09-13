@@ -82,9 +82,16 @@ test('the duplicate signal is REFUSED with DUPLICATE_SIGNAL', () => {
 });
 
 test('the original signal still succeeded; the duplicate did not poison it', () => {
+  // A passing ingest entry files under the canonical lead id, so the signal is identified
+  // by its evidence ref rather than by the entry's lead_id.
   const accepted = run.ledger
     .entries()
-    .filter((e) => e.stage === 'ingest' && e.lead_id === 'sig-1001' && e.verdict === 'PASS');
+    .filter(
+      (e) =>
+        e.stage === 'ingest' &&
+        e.verdict === 'PASS' &&
+        e.evidence_refs.includes('signal:sig-1001'),
+    );
   assert.equal(accepted.length, 1, 'exactly one of the pair was accepted');
 });
 

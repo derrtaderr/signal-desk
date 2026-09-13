@@ -70,6 +70,7 @@ export const ingest = {
       if (!isNonEmptyString(signal.signature)) {
         return refuse({
           reason: 'SIGNATURE_MISSING',
+          evidence_refs: [`signal:${signal.id}`],
           detail: 'a secret is configured but the signal carries no signature',
         });
       }
@@ -77,6 +78,7 @@ export const ingest = {
       if (!equalSignatures(signal.signature, expected)) {
         return refuse({
           reason: 'SIGNATURE_INVALID',
+          evidence_refs: [`signal:${signal.id}`],
           detail: 'the signature does not cover this payload',
         });
       }
@@ -89,18 +91,31 @@ export const ingest = {
     if (ageMs > windowMs) {
       return refuse({
         reason: 'REPLAY_WINDOW_EXCEEDED',
+        evidence_refs: [`signal:${signal.id}`],
         detail: `signal is ${ageMs}ms old, outside the ${windowMs}ms replay window`,
       });
     }
 
-    // The ledger is the idempotency store. A signal id that already carries a passing
-    // ingest entry has been accepted once, and accepting it again would double the motion.
+    // The ledger is the idempotency store. A signal already carrying a passing ingest entry
+    // has been accepted once, and accepting it again would double the motion.
+    //
+    // The lookup keys on the evidence ref rather than on the entry's lead_id, because a
+    // passing ingest entry files under the CANONICAL lead id it just assigned, not under
+    // the signal id. The evidence ref is what names the signal, and idempotency is a
+    // property of the signal.
+    const marker = `signal:${signal.id}`;
     const alreadyAccepted = ctx.ledger
-      .entriesFor(signal.id)
-      .some((entry) => entry.stage === 'ingest' && entry.verdict === 'PASS');
+      .entries()
+      .some(
+        (entry) =>
+          entry.stage === 'ingest' &&
+          entry.verdict === 'PASS' &&
+          entry.evidence_refs.includes(marker),
+      );
     if (alreadyAccepted) {
       return refuse({
         reason: 'DUPLICATE_SIGNAL',
+        evidence_refs: [marker],
         detail: `signal ${signal.id} has already been accepted by a passing ingest entry`,
       });
     }

@@ -150,7 +150,9 @@ test('supplementary entries returned by a stage are stamped and land before its 
   assert.equal(entries[1].verdict, 'PASS');
 });
 
-test('the kernel adopts the canonical lead_id that a stage assigns in its output', async () => {
+test('the kernel adopts an assigned lead_id before stamping, so one trail covers the lead', async () => {
+  // Adopting after stamping would file the assigning stage's own entry under the raw signal
+  // id, and `explain <lead>` would return a trail that starts at the second stage.
   const stages = [
     { name: 'ingest', run: (input) => pass({ output: { ...input, lead_id: 'canonical-1' } }) },
     alwaysPass('after'),
@@ -158,8 +160,14 @@ test('the kernel adopts the canonical lead_id that a stage assigns in its output
   const { ledger, run } = harness({ stages, signals: [{ id: 'raw-1' }] });
   await run();
   const entries = ledger.entries();
-  assert.equal(entries[0].lead_id, 'raw-1', 'the ingest verdict is stamped with what we knew then');
-  assert.equal(entries[1].lead_id, 'canonical-1', 'later stages use the id ingest assigned');
+  assert.deepEqual(entries.map((e) => e.lead_id), ['canonical-1', 'canonical-1']);
+});
+
+test('a lead refused before any id is assigned keeps the id we knew at the time', async () => {
+  const stages = [{ name: 'ingest', run: () => refuse({ reason: 'MALFORMED' }) }];
+  const { ledger, run } = harness({ stages, signals: [{ id: 'raw-1' }] });
+  await run();
+  assert.equal(ledger.entries()[0].lead_id, 'raw-1');
 });
 
 test('a signal with no identifier still gets a stable positional lead_id', async () => {

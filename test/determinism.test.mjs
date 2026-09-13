@@ -104,7 +104,7 @@ test('two signals sharing an id are resolved first-come-first-served, not arbitr
   const { ledger } = await executeFixtureRun();
   const ingestVerdicts = ledger
     .entries()
-    .filter((e) => e.stage === 'ingest' && e.lead_id === 'sig-1001')
+    .filter((e) => e.stage === 'ingest' && e.evidence_refs.includes('signal:sig-1001'))
     .map((e) => e.verdict);
   assert.deepEqual(ingestVerdicts, ['PASS', 'REFUSE'], 'the first wins and the replay is refused');
 });
