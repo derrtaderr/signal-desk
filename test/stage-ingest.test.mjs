@@ -317,3 +317,21 @@ test('the raw bytes do not travel into the lead, so nothing downstream re-parses
   assert.equal(result.output.raw, undefined);
   assert.equal(result.output.signature, undefined);
 });
+
+test('sources named by the payload travel onto the lead, kept distinct from fetched citations', async () => {
+  // Two different things that must not share a name. `sources` is where the signal SAYS the
+  // evidence is. `citations` is what enrich actually fetched. Collapsing them would let an
+  // unfetched URL read as a citation.
+  const { ctx } = makeCtx();
+  const payload = { ...validPayload(), sources: ['https://a.test/acme', 'https://b.test/acme'] };
+  const result = await ingest.run(validSignal({ payload, signature: signPayload(SECRET, payload) }), ctx);
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(result.output.sources, payload.sources);
+  assert.equal(result.output.citations, undefined);
+});
+
+test('a payload naming no sources yields an empty list rather than an absent one', async () => {
+  const { ctx } = makeCtx();
+  const result = await ingest.run(validSignal(), ctx);
+  assert.deepEqual(result.output.sources, []);
+});
