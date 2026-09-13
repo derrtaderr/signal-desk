@@ -129,6 +129,59 @@ test('a phone number in the body REFUSES with PII_IN_BODY', async () => {
   assert.deepEqual(result.reason_codes, ['PII_IN_BODY']);
 });
 
+// --- fail-closed redaction: the asymmetric pass ---------------------------------------
+//
+// The gate does not merely look for PII, it redacts and then verifies the redaction. When the
+// verifying pass still finds something, the gate cannot characterise what is in the draft, and
+// that is a strictly more severe refusal than "I found a phone number".
+
+test('PII the redacting pattern misses is caught by the verifying pass, as REDACTION_INCOMPLETE', async () => {
+  // A TLD-less internal address. The redacting pattern requires a dotted TLD and does not
+  // match; the broader verifying pattern does.
+  const result = await gate.run(
+    lead({ body: 'Hi Dana,\n\nForward this to ops@internal and they will route it for you.' }),
+    makeCtx(),
+  );
+  assert.equal(result.status, 'REFUSE');
+  assert.deepEqual(result.reason_codes, ['REDACTION_INCOMPLETE']);
+});
+
+test('an unseparated digit run is caught by the verifying pass too', async () => {
+  const result = await gate.run(
+    lead({ body: 'Hi Dana,\n\nTheir desk line is 4155550132 if you would rather call them.' }),
+    makeCtx(),
+  );
+  assert.deepEqual(result.reason_codes, ['REDACTION_INCOMPLETE']);
+});
+
+test('REDACTION_INCOMPLETE outranks PII_IN_BODY, because it is the more severe finding', async () => {
+  const result = await gate.run(
+    lead({ body: 'Hi Dana,\n\nMail marcus@othercorp.test, or failing that ops@internal.' }),
+    makeCtx(),
+  );
+  assert.deepEqual(result.reason_codes, ['REDACTION_INCOMPLETE']);
+  const codes = result.output.gate.violations.map((v) => v.code);
+  assert.ok(codes.includes('PII_IN_BODY'), 'the ordinary finding is still reported alongside it');
+});
+
+test('the redaction rule reports the verification failure so a reader can act on it', async () => {
+  const result = await gate.run(
+    lead({ body: 'Hi Dana,\n\nForward this to ops@internal and they will route it for you.' }),
+    makeCtx(),
+  );
+  assert.match(result.detail, /ops@internal|redaction/i);
+});
+
+test('a clean draft passes the redaction rule without its text being altered', async () => {
+  // Redaction is a detection mechanism here, not a repair. Nothing is ever sent in redacted
+  // form, so the draft the gate passes through must be the draft that was written.
+  const original = lead();
+  const result = await gate.run(original, makeCtx());
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.output.draft.body, original.draft.body);
+  assert.equal(result.output.draft.subject, original.draft.subject);
+});
+
 // --- banned phrases and length -------------------------------------------------------
 
 test('a banned phrase REFUSES with BANNED_PHRASE and names the phrase', async () => {
