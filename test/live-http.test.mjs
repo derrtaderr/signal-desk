@@ -60,7 +60,7 @@ function harness(responses, overrides = {}) {
     },
     sleep: async (ms) => { slept.push(ms); },
     jitter: () => 0.5,
-    clock: { now: () => '2026-03-01T09:00:00.000Z', peek: () => '2026-03-01T09:00:00.000Z' },
+    readClock: () => '2026-03-01T09:00:00.000Z',
     ...overrides,
   });
   return { fetcher, calls, slept };
@@ -204,4 +204,30 @@ test('every attempt carries an abort signal, so a hung socket cannot hold the ru
   const { fetcher, calls } = harness([ok({})]);
   await fetcher(URL_OK);
   assert.ok(calls[0].options.signal, 'the transport is handed something it can be cancelled with');
+});
+
+test('the fetcher stamps its own observation and never consumes a RUN-clock reading', () => {
+  // The regression this pins, stated where somebody changing this signature will read it.
+  //
+  // The run clock is a RECORDED SEQUENCE: every instant it issues is captured so a replay can
+  // reissue them in order and stamp an identical ledger. This transport briefly took fetched_at from
+  // it, which meant a live run consumed one reading per fetch that the recorded fetcher does not
+  // consume on replay, so every later reading shifted by one and the replayed ledger stamped a
+  // different instant. Invisible whenever two reads landed in the same millisecond.
+  //
+  // `fetched_at` is TRANSPORT METADATA. It travels inside the response and is captured with it, so a
+  // replay reads it back from the capture and never needed the ordered sequence at all.
+  const runClock = { calls: 0, now() { this.calls += 1; return 'RUN'; }, peek() { this.calls += 1; return 'RUN'; } };
+  const fetcher = createLiveFetcher({
+    transport: async () => ok({ as_of: 'x' }),
+    readClock: () => '2026-03-01T09:00:00.000Z',
+    // Passed but unused. If a future edit reaches for it, this test fails rather than a replay
+    // failing intermittently three files away.
+    clock: runClock,
+  });
+
+  return fetcher(URL_OK).then((response) => {
+    assert.equal(response.fetched_at, '2026-03-01T09:00:00.000Z');
+    assert.equal(runClock.calls, 0, 'the run clock was not touched');
+  });
 });

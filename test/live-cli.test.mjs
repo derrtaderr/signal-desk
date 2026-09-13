@@ -71,6 +71,19 @@ function fakeTransport({ draft, verdict } = {}) {
     seen,
     transport: async (url, options) => {
       seen.push({ url, options });
+      // A DELIBERATE DELAY, and it is a regression guard rather than a simulation.
+      //
+      // The replay check below caught a real bug intermittently: the live fetcher took fetched_at
+      // from the RUN CLOCK, whose readings are a recorded sequence, so a live run consumed one
+      // reading per fetch that the recorded fetcher never consumes on replay, and every later
+      // reading shifted by one position. It was invisible whenever two consecutive wall-clock reads
+      // landed in the same millisecond, which is most of the time on an idle machine.
+      //
+      // Spending a few milliseconds here forces consecutive reads apart, which makes the check
+      // DETERMINISTIC instead of dependent on machine load. Without it this test passes on a fast
+      // machine while the bug is present, which is exactly how the bug survived being written.
+      const until = Date.now() + 3;
+      while (Date.now() < until) { /* forcing consecutive clock reads into different milliseconds */ }
       const json = (body) => ({
         status: 200,
         headers: { get: () => null },

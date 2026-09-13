@@ -21,7 +21,7 @@ import { recordingClock } from './context.mjs';
 import { createLiveFetcher } from './live/http.mjs';
 import { createLiveModel } from './live/anthropic.mjs';
 import { nodeTransport } from './live/node-transport.mjs';
-import { resolveModelKey } from './live/keys.mjs';
+import { resolveModelKey, secretScrubber } from './live/keys.mjs';
 import { liveConfig, resolveSignalSecret, MODEL_VARIABLE } from './live/config.mjs';
 import { loadLiveSignals, liveSignalFromBytes } from './live/signals.mjs';
 import { writeDeadLetter, readDeadLetters, isDeadLetterable, dlqPath } from './live/dlq.mjs';
@@ -283,12 +283,18 @@ async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransp
   const clock = recordingClock();
   const config = liveConfig({ secret, startedAt: at, model: env[MODEL_VARIABLE] });
 
+  // The CLI is the one place that holds BOTH secrets, so it is the one place that can build the
+  // scrubber every transport applies to text that came from outside. See test/key-hygiene.test.mjs.
+  const scrub = secretScrubber([key, secret]);
+
   const { run_id, ledger, ctx, stages, capture, config: runConfig, recordingsSeed } = buildLiveRun({
     signals,
     config,
     clock,
-    fetch: createLiveFetcher({ transport, clock }),
-    model: createLiveModel({ key, transport, model: config.model }),
+    // No run clock here, on purpose: the transport stamps its own observation. See the note in
+    // src/live/http.mjs about the replay misalignment that taught us the difference.
+    fetch: createLiveFetcher({ transport, scrub }),
+    model: createLiveModel({ key, transport, model: config.model, scrub }),
   });
 
   const report = await runPipeline({ stages, signals, ctx, ledger });

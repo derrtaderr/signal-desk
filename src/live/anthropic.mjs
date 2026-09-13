@@ -48,8 +48,8 @@ function isTimeout(error) {
 
 // The longest useful thing a provider error body says, trimmed so a huge HTML error page cannot
 // flood a refusal detail, and scrubbed so it cannot carry the credential.
-function upstreamDetail(text, key) {
-  const scrubbed = scrubKey(String(text ?? ''), key).trim();
+function upstreamDetail(text, key, scrub = (value) => value) {
+  const scrubbed = scrub(scrubKey(String(text ?? ''), key)).trim();
   const compact = scrubbed.replace(/\s+/g, ' ');
   return compact.length <= 300 ? compact : `${compact.slice(0, 299)}…`;
 }
@@ -80,6 +80,9 @@ export function createLiveModel({
   backoffMs = DEFAULT_BACKOFF_MS,
   sleep = async () => {},
   jitter = Math.random,
+  // Layered over this module's own key scrub. Its own covers the key it holds; this one covers
+  // every other secret the process holds, which this module deliberately does not know about.
+  scrub = (text) => text,
 } = {}) {
   if (typeof key !== 'string' || key.trim() === '') {
     throw new TypeError('createLiveModel requires the model key; see src/live/keys.mjs for the precedence rule');
@@ -133,7 +136,7 @@ export function createLiveModel({
           'MODEL_UNAVAILABLE',
           isTimeout(error)
             ? `the model did not answer within ${timeoutMs}ms, and silence is not a draft`
-            : `the model could not be reached: ${scrubKey(error.message, key)}`,
+            : `the model could not be reached: ${scrub(scrubKey(error.message, key))}`,
         );
         continue;
       }
@@ -143,7 +146,7 @@ export function createLiveModel({
       if (response.status === 429 || response.status >= 500) {
         lastFailure = new ModelTransportError(
           'MODEL_UNAVAILABLE',
-          `the model provider answered ${response.status}: ${upstreamDetail(raw, key)}`,
+          `the model provider answered ${response.status}: ${upstreamDetail(raw, key, scrub)}`,
         );
         continue;
       }
@@ -154,7 +157,7 @@ export function createLiveModel({
       if (response.status !== 200) {
         throw new ModelTransportError(
           'MODEL_UNAVAILABLE',
-          `the model provider answered ${response.status} and will answer the same again: ${upstreamDetail(raw, key)}`,
+          `the model provider answered ${response.status} and will answer the same again: ${upstreamDetail(raw, key, scrub)}`,
         );
       }
 
@@ -164,7 +167,7 @@ export function createLiveModel({
       } catch (error) {
         throw new ModelTransportError(
           'MODEL_UNPARSEABLE',
-          `the model provider answered 200 with a body that is not JSON: ${scrubKey(error.message, key)}`,
+          `the model provider answered 200 with a body that is not JSON: ${scrub(scrubKey(error.message, key))}`,
         );
       }
 
