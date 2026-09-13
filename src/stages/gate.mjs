@@ -89,14 +89,24 @@ function evaluateRules(lead, config) {
   // Reported first within this rule, because it is the more severe finding. "I found a phone
   // number" means everything worked. "Something is still in there after I redacted" means the
   // gate cannot characterise what it is holding.
+  // NOTE ON WHAT THESE DETAILS SAY. They name the KIND of finding and never the value.
+  //
+  // A refusal detail travels into the ledger, which is the durable, shareable, committed record
+  // of the run. Quoting the leaked value there would make the safeguard the mechanism of the
+  // leak: the gate refused precisely so that value would not travel, and the refusal would
+  // carry it anyway, into the one artifact designed to be handed to other people.
+  //
+  // The operator loses nothing. The draft still holds its own text and is right in front of
+  // them in the run output; what is withheld is the copy that would outlive the run.
   if (!verification.clean) {
     const [first] = verification.found;
     violations.push({
       rule: 'pii_redaction',
       code: 'REDACTION_INCOMPLETE',
       detail:
-        `redaction ran and verification still found ${first.type}-shaped content ` +
-        `("${first.value}"), so the gate cannot certify what this draft contains`,
+        `redaction ran and verification still found ${first.type}-shaped content in the body, ` +
+        'so the gate cannot certify what this draft contains. The value is withheld from this ' +
+        'record deliberately; read the draft itself to see it',
     });
   }
 
@@ -106,8 +116,8 @@ function evaluateRules(lead, config) {
       code: 'PII_IN_BODY',
       detail:
         hit.type === 'email'
-          ? `the draft contains a third-party email address: ${hit.value}`
-          : `the draft contains something shaped like a phone number: ${hit.value}`,
+          ? 'the draft contains a third-party email address, withheld from this record'
+          : 'the draft contains something shaped like a phone number, withheld from this record',
     });
   }
 
