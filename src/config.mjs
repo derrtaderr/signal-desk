@@ -31,6 +31,12 @@ export const defaultConfig = {
 
   enrich: {
     sources: ['https://directory.test/company/{domain}', 'https://newsroom.test/{domain}'],
+
+    // The identity source, contact-scoped rather than company-scoped. It answers whether the
+    // human this signal names is the human the evidence describes, which vendor-side identity
+    // resolution gets wrong often enough to be worth asking. Its responses carry an `identity`
+    // block rather than `claims`, so it never becomes a citation for anything.
+    identitySource: 'https://people.test/{email}',
   },
 
   score: {

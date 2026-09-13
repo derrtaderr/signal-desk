@@ -1,0 +1,21 @@
+{
+  "id": "sig-9007",
+  "source": "rb2b",
+  "received_at": "2026-03-01T09:00:10.000Z",
+  "payload": {
+    "company": {
+      "name": "Meridian Payments",
+      "domain": "meridian.test"
+    },
+    "contact": {
+      "name": "Jordan Blake",
+      "email": "jordan@meridian.test",
+      "title": "VP Revenue"
+    },
+    "intent": {
+      "page": "/pricing",
+      "visits": 3
+    }
+  },
+  "signature": "901016e16e87f5e64808305ecfe08c742c502a8ae0dadb77e06cc852bfb14d0c"
+}
