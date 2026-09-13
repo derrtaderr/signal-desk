@@ -38,13 +38,18 @@ export function loadFixtures(dir = FIXTURES_DIR) {
 
 // Derived, never random. Two runs over the same corpus and the same wiring share a run id,
 // which is precisely what lets their ledgers be compared byte for byte.
+//
+// The signals are sorted before hashing, so the id identifies the input SET rather than the
+// order the files happened to be listed in. The kernel sorts leads before processing them
+// for the same reason, and an id that moved when the directory listing moved would undo
+// that work.
 export function computeRunId({ pipeline: stages, config, signals }) {
   const digest = createHash('sha256')
     .update(
       canonical({
         stages: stages.map((stage) => stage.name),
         config,
-        signals,
+        signals: signals.map((signal) => canonical(signal)).sort(),
       }),
     )
     .digest('hex');
