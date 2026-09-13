@@ -428,7 +428,14 @@ async function verbReplay({ args, out, err, env, cwd }) {
       `${seal.summary.REFUSE} refused, ${seal.summary.total} in total`,
   );
 
-  const { ledger, ctx, stages, signals, run_id } = buildRun({ fixtures: loadFixtures() });
+  // The decisions have to be layered in exactly as `run` layers them, or this re-execution is
+  // not a re-execution of the same run. Omitting them rebuilt the run from the fixture corpus
+  // alone, which produced the fixture-only run id and reported "the inputs or the wiring have
+  // changed" at the happy path's final step, blaming the user for a wiring bug.
+  const { ledger, ctx, stages, signals, run_id } = buildRun({
+    fixtures: loadFixtures(),
+    decisions: loadDecisions(runsDir(env, cwd)),
+  });
   await runPipeline({ stages, signals, ctx, ledger });
 
   if (run_id !== runId) {

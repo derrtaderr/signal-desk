@@ -316,3 +316,71 @@ test('explain reads the most recent run too, since it had the same defect', () =
     assert.match(cli(['explain', leadId], dir), /PASS at handoff/);
   });
 });
+
+// --- replay after an approval -------------------------------------------------------------
+//
+// The loop's last step. A run that acted on a human decision has to be replayable like any
+// other, and no test covered this path before, which is exactly why it shipped broken: replay
+// rebuilt the run from the fixture corpus alone and omitted the decisions `run` had layered in.
+// It then reported "the inputs or the wiring have changed since that run", blaming the user for
+// a wiring bug at the happy path's final step.
+
+test('a run that acted on an approval replays cleanly', () => {
+  inWorkspace((dir) => {
+    cli(['run'], dir);
+    cli(['approve', parkedHash(cli(['queue'], dir)), '--by', 'dana.reviewer'], dir);
+
+    const output = cli(['run'], dir);
+    const runId = output.match(/run-[0-9a-f]{12}/)[0];
+    assert.match(output, /2 passed to handoff/, 'the approval was acted on');
+
+    // The assertion that was missing. execFileSync throws on a non-zero exit, so reaching the
+    // next line at all is the proof.
+    const replayed = cli(['replay', runId], dir);
+    assert.match(replayed, new RegExp(`replay of ${runId} is an exact match`));
+    assert.match(replayed, /identical bytes, chain intact/);
+  });
+});
+
+test('a run that acted on a REJECTION replays cleanly too', () => {
+  inWorkspace((dir) => {
+    cli(['run'], dir);
+    cli(['reject', parkedHash(cli(['queue'], dir)), '--note', 'wrong persona'], dir);
+    const output = cli(['run'], dir);
+    const runId = output.match(/run-[0-9a-f]{12}/)[0];
+    assert.match(cli(['replay', runId], dir), /is an exact match/);
+  });
+});
+
+test('replay of a post-approval run verifies its seal, not just its bytes', () => {
+  inWorkspace((dir) => {
+    cli(['run'], dir);
+    cli(['approve', parkedHash(cli(['queue'], dir))], dir);
+    const runId = cli(['run'], dir).match(/run-[0-9a-f]{12}/)[0];
+
+    const replayed = cli(['replay', runId], dir);
+    assert.match(replayed, /seal verified: 2 passed, 0 parked/);
+  });
+});
+
+test('the pre-approval run no longer replays once a decision has been recorded', () => {
+  // A real limitation, asserted rather than hidden. Replay re-executes from CURRENT inputs, and
+  // a recorded decision is an input. So the earlier run is no longer reproducible, and saying so
+  // is correct: the ledger is intact, the inputs moved. The message distinguishes that from
+  // tampering, which is what matters.
+  inWorkspace((dir) => {
+    const first = cli(['run'], dir);
+    const firstRunId = first.match(/run-[0-9a-f]{12}/)[0];
+    cli(['approve', parkedHash(cli(['queue'], dir))], dir);
+
+    let output = '';
+    try {
+      cli(['replay', firstRunId], dir);
+      assert.fail('replay should have reported the inputs moved');
+    } catch (error) {
+      output = `${error.stdout}${error.stderr}`;
+    }
+    assert.match(output, /hash chain verified/, 'the ledger itself is intact');
+    assert.match(output, /inputs or the wiring have changed/);
+  });
+});
