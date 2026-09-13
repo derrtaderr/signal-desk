@@ -204,6 +204,47 @@ test('a SOURCE error whose message contains the key does not carry it into any a
   assertNoCanary(result, 'source error quoting the key');
 });
 
+test('a source answering 200 with a JSON STRING carrying the key does not leak it', async () => {
+  // The scrub bypass the ship-check proved. SOURCE_UNPARSEABLE's details interpolated untrusted text
+  // through our OWN string building — JSON.stringify of the parsed body, and JSON.parse's error
+  // message, which embeds a snippet of the body — so neither passed through the scrubber. A 200 whose
+  // body is a bare JSON string is the cleanest way to land arbitrary source-controlled text in a
+  // refusal detail, and from there in the ledger and the dashboard.
+  const runs = tmp('canary-string-body');
+  const result = await runWith(async (url, options) => {
+    if (options.method === 'POST') return completion(DRAFT);
+    // Valid JSON, not an object: it reaches the "not a claim record" branch.
+    return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify(`leaked ${CANARY} and ${SECRET}`) };
+  }, { runs });
+
+  assertNoCanary(result, '200 JSON-string body');
+});
+
+test('a source answering 200 with MALFORMED JSON containing the key does not leak it either', async () => {
+  // The other half of the same bypass: JSON.parse's error message quotes the offending input.
+  const runs = tmp('canary-malformed');
+  const result = await runWith(async (url, options) => {
+    if (options.method === 'POST') return completion(DRAFT);
+    return { status: 200, headers: { get: () => null }, text: async () => `{"claims": "${CANARY}" ${SECRET}` };
+  }, { runs });
+
+  assertNoCanary(result, '200 malformed body');
+});
+
+test('an enormous unparseable body cannot flood the ledger through a refusal detail', async () => {
+  // Uncapped interpolation is its own problem even with no credential in it. One hostile source
+  // should not be able to push 200KB into the durable record, the golden file, or the dashboard.
+  const runs = tmp('canary-flood');
+  const result = await runWith(async (url, options) => {
+    if (options.method === 'POST') return completion(DRAFT);
+    return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify('z'.repeat(60000)) };
+  }, { runs });
+
+  const ledger = result.files.find((file) => file.endsWith('ledger.jsonl'));
+  const longest = Math.max(...readFileSync(ledger, 'utf8').trim().split('\n').map((line) => line.length));
+  assert.ok(longest < 4000, `a refusal detail flooded the ledger: longest entry ${longest} bytes`);
+});
+
 test('a run whose every lead is DEAD-LETTERED leaves the key out of the dead letters too', async () => {
   // The DLQ retains raw payloads, which makes it the artifact with the least filtering applied. It
   // is checked explicitly rather than incidentally.
