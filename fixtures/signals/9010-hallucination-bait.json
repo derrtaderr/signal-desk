@@ -1,0 +1,21 @@
+{
+  "id": "sig-9010",
+  "source": "rb2b",
+  "received_at": "2026-03-01T09:00:25.000Z",
+  "payload": {
+    "company": {
+      "name": "Ardent Volumetrics",
+      "domain": "nowhere.test"
+    },
+    "contact": {
+      "name": "Kit Marlowe",
+      "email": "kit@nowhere.test",
+      "title": "VP Revenue Operations"
+    },
+    "intent": {
+      "page": "/pricing",
+      "visits": 5
+    }
+  },
+  "signature": "52b93789db8ef9df4bef1f2897b92c05563cbe4931b33276d9f4aa37deda99f0"
+}

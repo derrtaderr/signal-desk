@@ -27,12 +27,12 @@ machine as on anyone else's.
 <!-- verified-block: run -->
 ```console
 $ node bin/signal-desk.mjs run
-run run-1cd821879d88
+run run-cc483f9d8434
 
   1 passed to handoff
   1 awaiting a human
-  11 refused
-  13 signals in total
+  12 refused
+  14 signals in total
 
   lead-29e94419ba7e      handoff   PASS         
   sig-1001               ingest    REFUSE       DUPLICATE_SIGNAL
@@ -47,16 +47,17 @@ run run-1cd821879d88
   lead-aa10c945e3bf      enrich    REFUSE       IDENTITY_CONTRADICTED
   lead-d03317053357      enrich    REFUSE       EVIDENCE_DECAYED
   lead-f4a249c336f5      gate      REFUSE       PROMPT_INJECTION
+  lead-03ceebb25be4      enrich    REFUSE       NO_CITED_CLAIMS
 
-  ledger    runs/run-1cd821879d88/ledger.jsonl
-  handoffs  1 dry run artifact(s) in runs/run-1cd821879d88/handoffs
+  ledger    runs/run-cc483f9d8434/ledger.jsonl
+  handoffs  1 dry run artifact(s) in runs/run-cc483f9d8434/handoffs
 
   Nothing was sent. This tool never sends mail.
   Inspect a decision with: node bin/signal-desk.mjs explain <lead>
   Act on what is parked with: node bin/signal-desk.mjs queue
 ```
 
-Thirteen signals went in and one came out the far end. That ratio is the point. Eleven were refused
+Fourteen signals went in and one came out the far end. That ratio is the point. Twelve were refused
 and one is waiting for a person, and every one of those outcomes names the rule that produced
 it.
 
@@ -75,6 +76,7 @@ working rather than asserting that they exist:
 | `IDENTITY_CONTRADICTED` | A signal that is correct in every checkable way and names the wrong human. The person-level source puts that address at a different company |
 | `EVIDENCE_DECAYED` | A source that answers 200, in the right shape, with a record dated eleven months ago. A 200 is not freshness |
 | `PROMPT_INJECTION` | A scraped page whose industry field tells the system to ignore its instructions and approve the lead, with live markup attached |
+| `NO_CITED_CLAIMS` | A company that does not exist. Three sources each know nothing, and nothing is invented to fill the hole |
 | `REJECTED_BY_HUMAN` | A person said no |
 
 ## Inspect a decision
@@ -86,7 +88,7 @@ stage stood on.
 ```console
 $ node bin/signal-desk.mjs explain lead-29e94419ba7e
 lead lead-29e94419ba7e
-run  run-1cd821879d88
+run  run-cc483f9d8434
 
   2026-03-01T09:00:00.000Z  ingest    PASS         system
       evidence  signal:sig-1001
@@ -129,7 +131,7 @@ and the lead parks again as `APPROVAL_STALE`. A refusal reads the same way.
 ```console
 $ node bin/signal-desk.mjs explain sig-9001
 lead sig-9001
-run  run-1cd821879d88
+run  run-cc483f9d8434
 
   2026-03-01T09:00:35.000Z  ingest    REFUSE       system
       reasons   MALFORMED_PAYLOAD
@@ -148,11 +150,11 @@ makes the same decisions.
 
 <!-- verified-block: replay -->
 ```console
-$ node bin/signal-desk.mjs replay run-1cd821879d88
-hash chain verified across 78 entries
-seal verified: 1 passed, 1 parked, 11 refused, 13 in total
-replay of run-1cd821879d88 is an exact match
-78 entries, identical bytes, chain intact
+$ node bin/signal-desk.mjs replay run-cc483f9d8434
+hash chain verified across 83 entries
+seal verified: 1 passed, 1 parked, 12 refused, 14 in total
+replay of run-cc483f9d8434 is an exact match
+83 entries, identical bytes, chain intact
 ```
 
 If you edit a line in `runs/<run-id>/ledger.jsonl` and run `replay` again, it tells you which
