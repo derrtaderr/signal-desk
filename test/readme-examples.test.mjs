@@ -64,7 +64,13 @@ function runIn(dir, argv) {
 }
 
 test('the README declares the verified blocks this test knows how to check', () => {
-  assert.deepEqual([...blocks.keys()].sort(), ['explain-pass', 'explain-refuse', 'replay', 'run']);
+  assert.deepEqual([...blocks.keys()].sort(), [
+    'dashboard',
+    'explain-pass',
+    'explain-refuse',
+    'replay',
+    'run',
+  ]);
 });
 
 test('every verified block invokes the real bin path', () => {
@@ -106,6 +112,13 @@ test('README: the replay example matches the real output', () => {
   });
 });
 
+test('README: the dashboard example matches the real output', () => {
+  inTempDir((dir) => {
+    runIn(dir, ['node', 'bin/signal-desk.mjs', 'run']);
+    assert.equal(runIn(dir, blocks.get('dashboard').argv), blocks.get('dashboard').expected);
+  });
+});
+
 // --- claims the README makes that the code has to keep -------------------------------
 
 test('the README run id matches the one the pipeline actually produces', async () => {
@@ -116,7 +129,7 @@ test('the README run id matches the one the pipeline actually produces', async (
 
 test('every CLI verb the README shows actually exists', async () => {
   const { USAGE } = await import('../src/cli.mjs');
-  for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay']) {
+  for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay', 'dashboard']) {
     assert.ok(USAGE.includes(verb), `usage documents ${verb}`);
     assert.ok(README.includes(`bin/signal-desk.mjs ${verb}`), `README shows ${verb}`);
   }
@@ -131,7 +144,7 @@ test('every verb the CLI dispatches is one the README shows', async () => {
   // tripped the clobber guard. A test must not leave anything behind in the checkout.
   const dir = mkdtempSync(join(tmpdir(), 'signal-desk-verbs-'));
   try {
-    for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay']) {
+    for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay', 'dashboard']) {
       const lines = [];
       await main({
         argv: [verb],
@@ -151,9 +164,9 @@ test('every verb the CLI dispatches is one the README shows', async () => {
 });
 
 test('the README does not advertise a verb this milestone has not built', () => {
-  // approve and reject moved OUT of this list in M2, because they were built. dashboard is M3
-  // and --live is M4, and both stay here until they exist.
-  for (const verb of ['dashboard', '--live']) {
+  // approve and reject moved OUT of this list in M2 and dashboard moved out in M3, each in the
+  // commit that built it. --live is M4 and stays here until it exists.
+  for (const verb of ['--live']) {
     assert.ok(
       !README.includes(`bin/signal-desk.mjs ${verb}`),
       `README does not show the unbuilt verb ${verb} as runnable`,
@@ -163,7 +176,8 @@ test('the README does not advertise a verb this milestone has not built', () => 
 
 test('the CLI refuses a verb it has not built, rather than doing something surprising', async () => {
   const { main } = await import('../src/cli.mjs');
-  for (const verb of ['dashboard', 'send']) {
+  // `send` is non-scope in EVERY milestone, so unlike dashboard it never leaves this list.
+  for (const verb of ['send', 'transmit']) {
     const lines = [];
     const code = await main({ argv: [verb], out: () => {}, err: (line) => lines.push(line), cwd: ROOT, env: {} });
     assert.notEqual(code, 0, `${verb} exits non-zero`);
@@ -196,7 +210,7 @@ test('the usage text advertises no invocation that fails in a fresh clone', asyn
   const { USAGE } = await import('../src/cli.mjs');
   // An INVOCATION is the tool name followed by a verb. The first line of the usage text is a
   // title that happens to start with the tool's name, which is not an instruction to type.
-  const verbs = ['run', 'queue', 'approve', 'reject', 'explain', 'replay'];
+  const verbs = ['run', 'queue', 'approve', 'reject', 'explain', 'replay', 'dashboard'];
   for (const line of USAGE.split('\n')) {
     const trimmed = line.trim();
     for (const verb of verbs) {
