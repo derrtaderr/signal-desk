@@ -58,3 +58,30 @@ export function scrubKey(text, key) {
   if (typeof key !== 'string' || key === '') return text;
   return text.split(key).join(KEY_PLACEHOLDER);
 }
+
+/**
+ * One scrubber over every secret this process holds, for the transports to apply to any message
+ * that came from outside.
+ *
+ * THE DISTINCTION THAT MAKES THIS SAFE. A transport handed this function does not HOLD a secret; it
+ * holds the ability to remove one. The evidence transport in particular never sees a key and must
+ * not, which is exactly why it could not scrub one on its own — and a message it relays from a
+ * stranger's server can still carry whatever that server managed to observe.
+ *
+ * FOUND BY test/key-hygiene.test.mjs RATHER THAN BY REVIEW. A source whose error body echoed the
+ * key put it into an enrich detail, then the ledger, then dashboard.html, which is a file somebody
+ * opens in a browser and shares. The model transport was already scrubbing its own key; the
+ * evidence transport was relaying upstream text verbatim because it had nothing to scrub WITH.
+ */
+export function secretScrubber(secrets = []) {
+  const present = secrets.filter((secret) => typeof secret === 'string' && secret.trim() !== '');
+  if (present.length === 0) return (text) => text;
+  // Longest first, so a secret that contains another is removed whole rather than leaving a tail.
+  const ordered = [...present].sort((a, b) => b.length - a.length);
+  return (text) => {
+    if (typeof text !== 'string') return text;
+    let scrubbed = text;
+    for (const secret of ordered) scrubbed = scrubbed.split(secret).join(KEY_PLACEHOLDER);
+    return scrubbed;
+  };
+}

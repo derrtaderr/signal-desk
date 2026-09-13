@@ -115,6 +115,25 @@ function parseJsonObject(text, url) {
   return parsed;
 }
 
+// WHY THIS READS ITS OWN CLOCK RATHER THAN THE RUN CLOCK. A real bug, found by an intermittent
+// replay failure rather than by review, and the root cause is worth stating because the fix looks
+// like a detail and is not.
+//
+// The run clock is a RECORDED SEQUENCE: every instant it issues is captured so a replay can reissue
+// them in order and stamp an identical ledger. This transport used to take `fetched_at` from it,
+// which meant a live run consumed one reading per fetch that the RECORDED fetcher never consumes on
+// replay. Every subsequent reading then shifted by one position, so the replayed ledger stamped its
+// enrich entry with the instant the live run had used for something else.
+//
+// It was invisible whenever two consecutive wall-clock reads landed in the same millisecond, which
+// is most of the time on an idle machine, and a byte-level mismatch under load. An intermittent
+// failure in the one check that proves replayability.
+//
+// The distinction the fix rests on: the run clock stamps LEDGER ENTRIES, and `fetched_at` is
+// TRANSPORT METADATA that travels inside the response and is captured with it. A replay gets it back
+// from the capture, so it never needed to come from the recorded sequence at all. Conflating the two
+// made a shared, ordered resource look like an ordinary clock.
+
 /**
  * A live HTTPS GET, bounded, retried and shaped like the recorded fetcher.
  *
@@ -124,7 +143,8 @@ function parseJsonObject(text, url) {
  */
 export function createLiveFetcher({
   transport,
-  clock,
+  // The transport's OWN wall clock, deliberately NOT the run clock. See the note below.
+  readClock = () => new Date().toISOString(),
   timeoutMs = DEFAULT_TIMEOUT_MS,
   retries = DEFAULT_RETRIES,
   maxBytes = DEFAULT_MAX_BYTES,
@@ -133,6 +153,11 @@ export function createLiveFetcher({
   // A sleep this module implemented itself would make every retry test a real delay.
   sleep = async () => {},
   jitter = Math.random,
+  // Removes any secret this process holds from a message that came from outside. This transport
+  // never sees a key and must not; what it needs is the ABILITY TO REMOVE one, because a message it
+  // relays from a stranger's server can carry whatever that server observed. See
+  // secretScrubber in src/live/keys.mjs for the leak this closed and how it was found.
+  scrub = (text) => text,
 } = {}) {
   if (typeof transport !== 'function') {
     throw new TypeError(
@@ -140,8 +165,8 @@ export function createLiveFetcher({
         'reaches the network by omission',
     );
   }
-  if (clock === null || typeof clock?.now !== 'function') {
-    throw new TypeError('createLiveFetcher requires the run clock, so a response can record when it was observed');
+  if (typeof readClock !== 'function') {
+    throw new TypeError('createLiveFetcher requires a clock read, so a response can record when it was observed');
   }
 
   return async function fetchLive(url) {
@@ -178,7 +203,7 @@ export function createLiveFetcher({
       } catch (error) {
         lastFailure = isTimeout(error)
           ? new LiveTransportError('SOURCE_TIMEOUT', `${url} did not answer within ${timeoutMs}ms`)
-          : new LiveTransportError('SOURCE_UNAVAILABLE', `${url} could not be reached: ${error.message}`);
+          : new LiveTransportError('SOURCE_UNAVAILABLE', `${url} could not be reached: ${scrub(error.message)}`);
         continue;
       }
 
@@ -190,7 +215,7 @@ export function createLiveFetcher({
         continue;
       }
 
-      const fetched_at = clock.now();
+      const fetched_at = readClock();
 
       // Any other non-200 IS an answer. Handed back unretried, for the enrich stage to record as
       // a source that does not know this company.

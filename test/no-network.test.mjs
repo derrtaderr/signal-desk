@@ -87,7 +87,7 @@ test('both live transports refuse to be constructed without an injected transpor
   const { createLiveFetcher } = await import('../src/live/http.mjs');
   const { createLiveModel } = await import('../src/live/anthropic.mjs');
 
-  assert.throws(() => createLiveFetcher({ clock: { now: () => 'x' } }), TypeError);
+  assert.throws(() => createLiveFetcher({ readClock: () => 'x' }), TypeError);
   assert.throws(() => createLiveModel({ key: 'k' }), TypeError);
 });
 
@@ -105,4 +105,18 @@ test('only node-transport.mjs touches globalThis.fetch anywhere under src/', () 
     }
   }
   assert.deepEqual(offenders, []);
+});
+
+test('the CLI is the only module that imports node-transport', () => {
+  // Deferred from the commit that created this gate, because the CLI had not yet been wired and a
+  // commit should not end on a red test. It is asserted now that live mode exists: exactly one
+  // module may reach the network, and this is the check that keeps the list at one.
+  const importers = srcFiles.filter((file) => {
+    if (file.endsWith(join('live', 'node-transport.mjs'))) return false;
+    return /from\s+['"][^'"]*node-transport\.mjs['"]/.test(readFileSync(file, 'utf8'));
+  });
+  assert.deepEqual(
+    importers.map((file) => relative(ROOT, file)),
+    ['src/cli.mjs'],
+  );
 });
