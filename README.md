@@ -27,7 +27,7 @@ machine as on anyone else's.
 <!-- verified-block: run -->
 ```console
 $ node bin/signal-desk.mjs run
-run run-d8a14f177e03
+run run-6f98451a03b0
 
   1 passed to handoff
   1 awaiting a human
@@ -41,8 +41,8 @@ run run-d8a14f177e03
   lead-e557482af15d      queue     REFUSE       REJECTED_BY_HUMAN
   sig-9001               ingest    REFUSE       MALFORMED_PAYLOAD
 
-  ledger    runs/run-d8a14f177e03/ledger.jsonl
-  handoffs  1 dry run artifact(s) in runs/run-d8a14f177e03/handoffs
+  ledger    runs/run-6f98451a03b0/ledger.jsonl
+  handoffs  1 dry run artifact(s) in runs/run-6f98451a03b0/handoffs
 
   Nothing was sent. This tool never sends mail.
   Inspect a decision with: signal-desk explain <lead>
@@ -61,7 +61,7 @@ stage stood on.
 ```console
 $ node bin/signal-desk.mjs explain lead-29e94419ba7e
 lead lead-29e94419ba7e
-run  run-d8a14f177e03
+run  run-6f98451a03b0
 
   2026-03-01T09:00:00.000Z  ingest    PASS         system
       evidence  signal:sig-1001
@@ -92,7 +92,7 @@ who and when, alongside the machine decisions. A refusal reads the same way.
 ```console
 $ node bin/signal-desk.mjs explain sig-9001
 lead sig-9001
-run  run-d8a14f177e03
+run  run-6f98451a03b0
 
   2026-03-01T09:00:31.000Z  ingest    REFUSE       system
       reasons   MALFORMED_PAYLOAD
@@ -110,9 +110,9 @@ proves the code still makes the same decisions.
 
 <!-- verified-block: replay -->
 ```console
-$ node bin/signal-desk.mjs replay run-d8a14f177e03
+$ node bin/signal-desk.mjs replay run-6f98451a03b0
 hash chain verified across 32 entries
-replay of run-d8a14f177e03 is an exact match
+replay of run-6f98451a03b0 is an exact match
 32 entries, identical bytes, chain intact
 ```
 

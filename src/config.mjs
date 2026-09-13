@@ -85,6 +85,18 @@ export const defaultConfig = {
     minBodyChars: 80,
     maxBodyChars: 900,
     bannedPhrases: ['guaranteed results', '100% risk free', 'act now', 'limited time only'],
+
+    // The fail-closed LLM rubric. In fixture mode the endpoint is reached through the recorded
+    // fetcher, so the demo is keyless and deterministic; the recordings are addressed by draft
+    // hash, so a verdict cannot outlive the draft it judged. Live mode (M4) swaps the fetcher
+    // and points the endpoint at a real judge. Nothing else changes.
+    //
+    // requiredCriteria is the list of questions the judge MUST answer. A criterion missing from
+    // a response is a refusal, not a pass, which is the whole reason the list is explicit.
+    rubric: {
+      endpoint: 'https://judge.test/rubric',
+      requiredCriteria: ['claim_grounding', 'audience_fit', 'tone'],
+    },
   },
 
   queue: {

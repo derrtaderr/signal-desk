@@ -1,0 +1,74 @@
+{
+  "https://judge.test/rubric/draft-28a34a58fd2b94a9": {
+    "status": 200,
+    "body": {
+      "draft_hash": "draft-28a34a58fd2b94a9",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "name": "claim_grounding",
+          "verdict": "PASS",
+          "note": "every factual assertion in the body traces to a source fetched this run"
+        },
+        {
+          "name": "audience_fit",
+          "verdict": "PASS",
+          "note": "the message addresses the operator who owns the problem it names"
+        },
+        {
+          "name": "tone",
+          "verdict": "PASS",
+          "note": "a question rather than a pitch, and no manufactured urgency"
+        }
+      ]
+    }
+  },
+  "https://judge.test/rubric/draft-b140898e0b7a1fab": {
+    "status": 200,
+    "body": {
+      "draft_hash": "draft-b140898e0b7a1fab",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "name": "claim_grounding",
+          "verdict": "PASS",
+          "note": "every factual assertion in the body traces to a source fetched this run"
+        },
+        {
+          "name": "audience_fit",
+          "verdict": "PASS",
+          "note": "the message addresses the operator who owns the problem it names"
+        },
+        {
+          "name": "tone",
+          "verdict": "PASS",
+          "note": "a question rather than a pitch, and no manufactured urgency"
+        }
+      ]
+    }
+  },
+  "https://judge.test/rubric/draft-b66622be1a11d3db": {
+    "status": 200,
+    "body": {
+      "draft_hash": "draft-b66622be1a11d3db",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "name": "claim_grounding",
+          "verdict": "PASS",
+          "note": "every factual assertion in the body traces to a source fetched this run"
+        },
+        {
+          "name": "audience_fit",
+          "verdict": "PASS",
+          "note": "the message addresses the operator who owns the problem it names"
+        },
+        {
+          "name": "tone",
+          "verdict": "PASS",
+          "note": "a question rather than a pitch, and no manufactured urgency"
+        }
+      ]
+    }
+  }
+}
