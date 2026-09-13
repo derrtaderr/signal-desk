@@ -133,7 +133,9 @@ test('a third-party email address in the body REFUSES with PII_IN_BODY', async (
   );
   assert.equal(result.status, 'REFUSE');
   assert.deepEqual(result.reason_codes, ['PII_IN_BODY']);
-  assert.match(result.detail, /othercorp\.test/);
+  // The detail names the kind of finding, not the address. See "the refusal must not reproduce
+  // the thing it refused" below for why, and for the assertions that pin it.
+  assert.match(result.detail, /third-party email address/);
 });
 
 test("the recipient's own address in the body is not a leak", async () => {
@@ -385,4 +387,59 @@ test('a lead carrying the correct draft hash passes, and the rubric is asked abo
   const result = await gate.run(subject, makeCtx({}, recording));
   assert.equal(result.status, 'PASS');
   assert.deepEqual(asked, [`${RUBRIC.endpoint}/${subject.draft_hash}`]);
+});
+
+// --- the refusal must not reproduce the thing it refused ------------------------------
+//
+// The gate refuses a draft precisely so that a leaked value does not travel. A refusal detail
+// quoting that value verbatim sends it straight into the ledger, which is the durable,
+// shareable, committed artifact of the run. The safeguard would then be the mechanism of the
+// leak, which is the one thing it must never be.
+
+test('a PII refusal names the KIND of finding, never the value', async () => {
+  const result = await gate.run(
+    lead({ body: 'Hi Dana,\n\nI also spoke with marcus.webb@othercorp.test about this already.' }),
+    makeCtx(),
+  );
+  assert.deepEqual(result.reason_codes, ['PII_IN_BODY']);
+  assert.doesNotMatch(result.detail, /marcus\.webb@othercorp\.test/, 'the address is not repeated');
+  assert.match(result.detail, /email/i, 'but the reader is told what kind of thing was found');
+});
+
+test('a phone refusal does not repeat the number', async () => {
+  const result = await gate.run(
+    lead({ body: 'Hi Dana,\n\nYour colleague can be reached on 415-555-0132 most afternoons.' }),
+    makeCtx(),
+  );
+  assert.doesNotMatch(result.detail, /415-555-0132/);
+  assert.match(result.detail, /phone/i);
+});
+
+test('a REDACTION_INCOMPLETE refusal does not repeat the residue either', async () => {
+  const result = await gate.run(
+    lead({ body: 'Hi Dana,\n\nForward this to ops@internal and they will route it for you.' }),
+    makeCtx(),
+  );
+  assert.deepEqual(result.reason_codes, ['REDACTION_INCOMPLETE']);
+  assert.doesNotMatch(result.detail, /ops@internal/);
+  assert.match(result.detail, /email/i);
+});
+
+test('the violation report counts findings, so a reader knows the scale', async () => {
+  const result = await gate.run(
+    lead({ body: 'Hi Dana,\n\ncc a@one.test and b@two.test on the thread.' }),
+    makeCtx(),
+  );
+  const pii = result.output.gate.violations.filter((v) => v.code === 'PII_IN_BODY');
+  assert.equal(pii.length, 2, 'both findings are reported');
+  for (const violation of pii) {
+    assert.doesNotMatch(violation.detail, /one\.test|two\.test/);
+  }
+});
+
+test('the draft itself still carries the text, so an operator can find and fix it', async () => {
+  // The value is withheld from the RECORD, not from the operator. The draft is right there.
+  const subject = lead({ body: 'Hi Dana,\n\nI spoke with marcus.webb@othercorp.test already.' });
+  const result = await gate.run(subject, makeCtx());
+  assert.match(result.output.draft.body, /marcus\.webb@othercorp\.test/);
 });
