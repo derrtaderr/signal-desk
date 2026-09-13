@@ -7,6 +7,7 @@
 //   (a) fail-closed PII redaction   LANDED, see src/redaction.mjs
 //   (b) fail-closed LLM rubric      LANDED, see src/rubric.mjs
 //   (c) prose claim grounding       LANDED, see src/prose-claims.mjs
+//   (d) prompt injection            LANDED in M3, see src/injection.mjs
 //
 // The structure is a list of named rules, every one evaluated, violations collected. Rule order
 // is the reported order, so the same broken draft always refuses for the same named reason.
@@ -20,6 +21,7 @@
 import { pass, refuse } from '../contract.mjs';
 import { redact, assertClean } from '../redaction.mjs';
 import { groundProseClaims } from '../prose-claims.mjs';
+import { detectInjection, describeInjection } from '../injection.mjs';
 import { computeDraftHash } from '../draft-hash.mjs';
 import { evaluateRubric } from '../rubric.mjs';
 
@@ -76,6 +78,32 @@ function evaluateRules(lead, config) {
       rule: 'prose_grounding',
       code: 'UNGROUNDED_PROSE_CLAIM',
       detail: ungrounded.detail,
+    });
+  }
+
+  // Text aimed at the system rather than at the reader, and markup in a message these templates
+  // compose as plain prose. See src/injection.mjs for what each kind means and for the honest
+  // account of what this defends today versus what it will have to defend in M4.
+  //
+  // ON RULE ORDER, which is the reported order and therefore a claim about severity. Rules 2
+  // and 3 answer "is this true". This one answers "is this text trying to act on the system",
+  // which is a different and more alarming question than "does this contain a phone number",
+  // and it is the one a person triaging a queue of refusals wants at the top. No fixture in the
+  // corpus trips both, so nothing committed depends on the choice; it is written down so the
+  // next person does not have to re-derive it.
+  //
+  // The detail QUOTES the payload, unlike the redaction rule below. That divergence is
+  // deliberate and is argued in describeInjection.
+  rulesRun.push('prompt_injection');
+  const injections = detectInjection(text);
+  if (injections.length > 0) {
+    violations.push({
+      rule: 'prompt_injection',
+      code: 'PROMPT_INJECTION',
+      detail:
+        `the draft contains ${describeInjection(injections)}. Outbound copy this pipeline ` +
+        'composes is plain prose written to a person; text addressing the system, or markup of ' +
+        'any kind, arrived from a source rather than from a template',
     });
   }
 

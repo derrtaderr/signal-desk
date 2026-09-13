@@ -1,0 +1,21 @@
+{
+  "id": "sig-9009",
+  "source": "rb2b",
+  "received_at": "2026-03-01T09:00:20.000Z",
+  "payload": {
+    "company": {
+      "name": "Lumen Grid",
+      "domain": "lumen.test"
+    },
+    "contact": {
+      "name": "Noa Bright",
+      "email": "noa@lumen.test",
+      "title": "VP Growth"
+    },
+    "intent": {
+      "page": "/pricing",
+      "visits": 4
+    }
+  },
+  "signature": "cfdf8678c226627f454cd6d25b96890f75e51a9c79babecb1be70754be14e581"
+}

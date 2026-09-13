@@ -119,6 +119,30 @@
       ]
     }
   },
+  "https://judge.test/rubric/draft-dd581a504d2f71e1": {
+    "status": 200,
+    "body": {
+      "draft_hash": "draft-dd581a504d2f71e1",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "name": "claim_grounding",
+          "verdict": "PASS",
+          "note": "every factual assertion in the body traces to a source fetched this run"
+        },
+        {
+          "name": "audience_fit",
+          "verdict": "PASS",
+          "note": "the message addresses the operator who owns the problem it names"
+        },
+        {
+          "name": "tone",
+          "verdict": "PASS",
+          "note": "a question rather than a pitch, and no manufactured urgency"
+        }
+      ]
+    }
+  },
   "https://judge.test/rubric/draft-df15f329016cd4de": {
     "status": 200,
     "body": {

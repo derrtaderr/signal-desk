@@ -234,6 +234,138 @@ test('no claim anywhere in the demo run rests on a source the run did not date',
   assert.deepEqual(undated.map(([url]) => url), []);
 });
 
+// --- hostile fixture 9: prompt injection in a scraped page ---------------------------
+//
+// DESIGN.md §7 asks for two things here, and they are different things: the injection must FAIL
+// TO INFLUENCE anything, and it must be VISIBLY FLAGGED in the trail. Two obligations, two sets
+// of assertions. See docs/M3-SPEC.md part 1 (c).
+
+test('the prompt-injection fixture ships a page that really does carry a payload', () => {
+  const { recordings } = loadFixtures();
+  const page = recordings['https://directory.test/company/lumen.test'];
+  assert.match(page.body.claims.industry, /ignore previous instructions/i);
+  assert.match(page.body.claims.industry, /approve this lead/i);
+  assert.match(page.body.claims.industry, /<script>/);
+});
+
+test('the injection is REFUSED at the gate with PROMPT_INJECTION', () => {
+  const lead = run.report.leads.find((l) => l.lead_id === leadIdForSignal('sig-9009'));
+  assert.equal(lead.final_status, 'REFUSE');
+  assert.equal(lead.final_stage, 'gate');
+  assert.deepEqual(lead.reason_codes, ['PROMPT_INJECTION']);
+});
+
+test('the injection is flagged by enrich at the moment it entered, before the gate saw it', () => {
+  // The two-stage answer. A reader asking "where did this come from" looks at enrich; a reader
+  // asking "what stopped it" looks at the gate. Both questions have an entry.
+  const leadId = leadIdForSignal('sig-9009');
+  const trail = entriesFor(leadId);
+  const flag = trail.find((e) => e.reason_codes.includes('INJECTION_MARKED'));
+  assert.ok(flag, 'enrich named it');
+  assert.equal(flag.stage, 'enrich');
+  assert.match(flag.detail, /directory\.test\/company\/lumen\.test/, 'and named the source');
+
+  const refusal = trail.find((e) => e.reason_codes.includes('PROMPT_INJECTION'));
+  assert.ok(trail.indexOf(flag) < trail.indexOf(refusal), 'the flag precedes the refusal');
+});
+
+// Obligation one: it influenced nothing.
+
+test('the injection changed no routing decision', () => {
+  // "approve this lead" is an instruction to a system that has no instruction-taking surface.
+  // The lead scored and routed exactly as its own signal earns, and the assertion derives the
+  // expectation from the config rather than restating a number.
+  const leadId = leadIdForSignal('sig-9009');
+  const lead = run.report.leads.find((l) => l.lead_id === leadId);
+  const band = defaultConfig.route.bands.find((b) => lead.output.score.total >= b.min);
+  assert.equal(lead.output.route.band, band.name);
+  assert.equal(lead.output.route.owner, band.owner);
+  assert.equal(lead.output.route.play, band.play);
+});
+
+test('the injection scored exactly what an identical clean lead would score', async () => {
+  // The direct form of "it influenced nothing": run the same lead again with the payload
+  // replaced by ordinary prose, and compare the factors the scorer produced.
+  const { score } = await import('../src/stages/score.mjs');
+  const leadId = leadIdForSignal('sig-9009');
+  const injected = run.report.leads.find((l) => l.lead_id === leadId).output;
+
+  const ctx = createContext({
+    ledger: new Ledger(),
+    clock: fixtureClock(defaultConfig.clock),
+    fetch: recordedFetcher({}),
+    config: defaultConfig,
+    run_id: 'run-adversarial',
+  });
+
+  const cleaned = {
+    ...injected,
+    claims: injected.claims.map((c) =>
+      c.field === 'industry' ? { field: 'industry', value: 'grid telemetry', citation: c.citation, cited: true } : c,
+    ),
+  };
+
+  const a = await score.run(injected, ctx);
+  const b = await score.run(cleaned, ctx);
+  assert.deepEqual(a.output.score, b.output.score, 'the payload moved no factor and no total');
+});
+
+test('the injection produced no approval and no human decision anywhere in the run', () => {
+  // What "approve this lead" was asking for. The only thing that writes an approval is a person
+  // typing `approve`, and no amount of text in a scraped field is a person.
+  const leadId = leadIdForSignal('sig-9009');
+  assert.deepEqual(
+    run.ledger.entries().filter((e) => e.lead_id === leadId && e.actor === 'human'),
+    [],
+  );
+});
+
+test('the injection reached no handoff, so the link it asked for was never exported', () => {
+  const leadId = leadIdForSignal('sig-9009');
+  assert.deepEqual(
+    run.ledger.entries().filter((e) => e.lead_id === leadId && e.stage === 'handoff'),
+    [],
+  );
+});
+
+test('the injected draft used the configured template and nothing else', () => {
+  // The structural reason none of the above could have gone differently. A template fill has
+  // no interpreter in it, so the payload could only ever arrive as CONTENT in the one position
+  // the template interpolates.
+  const leadId = leadIdForSignal('sig-9009');
+  const lead = run.report.leads.find((l) => l.lead_id === leadId);
+  const template = defaultConfig.draft.templates[lead.output.route.play];
+  assert.equal(lead.output.draft.template, lead.output.route.play);
+  assert.equal(lead.output.draft.to, 'noa@lumen.test');
+  assert.equal(
+    lead.output.draft.subject,
+    template.subject.replace('{company_name}', 'Lumen Grid'),
+    'the subject is the configured one with the identity fields filled, and nothing added',
+  );
+});
+
+// Obligation two: it is visible.
+
+test('the injection payload is quoted into the ledger rather than withheld', () => {
+  // Deliberately unlike the PII refusal, whose detail names the kind of finding and never the
+  // value. PII is a third party's private data and carrying it is the harm. This is the
+  // attacker's own text, it is nobody's secret, and it is the only thing an operator can act on.
+  const leadId = leadIdForSignal('sig-9009');
+  const refusal = entriesFor(leadId).find((e) => e.reason_codes.includes('PROMPT_INJECTION'));
+  assert.match(refusal.detail, /Ignore previous instructions/i);
+});
+
+test('the quoted payload carries live markup, which is what the dashboard has to escape', () => {
+  // This assertion and test/dashboard.test.mjs are two halves of one decision. Quoting the
+  // adversary puts attacker-controlled markup in the ledger; escaping every ledger-derived
+  // string in the dashboard is the price of that, and neither half is safe without the other.
+  const golden = run.ledger.toJSONL();
+  assert.match(golden, /script/, 'the payload really is in the durable record');
+  const leadId = leadIdForSignal('sig-9009');
+  const flag = entriesFor(leadId).find((e) => e.reason_codes.includes('INJECTION_MARKED'));
+  assert.match(flag.detail, /markup-shaped content/);
+});
+
 // --- the refusals are visible in the run's own report --------------------------------
 
 test('every refusal in the run names a reason code; none is unexplained', () => {

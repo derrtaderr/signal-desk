@@ -10,6 +10,7 @@
 // draft in.
 
 import { pass, refuse } from '../contract.mjs';
+import { detectInjection, describeInjection } from '../injection.mjs';
 
 function expand(template, lead) {
   return template
@@ -249,7 +250,32 @@ export const enrich = {
 
       citations.push(url);
       for (const [field, value] of Object.entries(response.body?.claims ?? {})) {
-        claims.push({ field, value, citation: url, cited: true });
+        // Flagged, not dropped, and not refused. Enrich is not a gate, and the gate is the
+        // stage whose job is judging text. Dropping it here would make the lead refuse for a
+        // MISSING claim, which reports the wrong thing about what happened; refusing here would
+        // hide the fact that a poisoned field travels all the way into a composed message
+        // before anything stops it. What enrich owes is the FLAG, at the point a reader looks
+        // to find out where the hostile bytes came from. See src/injection.mjs.
+        const findings = typeof value === 'string' ? detectInjection(value) : [];
+        if (findings.length > 0) {
+          entries.push({
+            verdict: 'PASS',
+            reason_codes: ['INJECTION_MARKED'],
+            evidence_refs: [url],
+            detail:
+              `the claim "${field}" fetched from ${url} contains ${describeInjection(findings)}. ` +
+              'It is kept and marked rather than dropped, so the gate refuses the draft for what ' +
+              'the source actually did rather than for a claim that went missing',
+          });
+        }
+
+        claims.push({
+          field,
+          value,
+          citation: url,
+          cited: true,
+          ...(findings.length > 0 ? { injection: true } : {}),
+        });
       }
     }
 
