@@ -67,6 +67,7 @@ test('the golden ledger pins the exact refusals, so a silently relaxed rule is c
     .map((e) => `${e.stage}:${e.reason_codes.join(',')}`)
     .sort();
   assert.deepEqual(refusals, [
+    'enrich:EVIDENCE_DECAYED',
     'enrich:IDENTITY_CONTRADICTED',
     'gate:PII_IN_BODY',
     'gate:RUBRIC_FAILED',

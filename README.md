@@ -27,12 +27,12 @@ machine as on anyone else's.
 <!-- verified-block: run -->
 ```console
 $ node bin/signal-desk.mjs run
-run run-bca842a03e40
+run run-b2c8ca42cbe4
 
   1 passed to handoff
   1 awaiting a human
-  9 refused
-  11 signals in total
+  10 refused
+  12 signals in total
 
   lead-29e94419ba7e      handoff   PASS         
   sig-1001               ingest    REFUSE       DUPLICATE_SIGNAL
@@ -45,16 +45,17 @@ run run-bca842a03e40
   lead-3a8cab6564a2      gate      REFUSE       UNGROUNDED_PROSE_CLAIM
   sig-9006               ingest    REFUSE       DUPLICATE_LEAD
   lead-aa10c945e3bf      enrich    REFUSE       IDENTITY_CONTRADICTED
+  lead-d03317053357      enrich    REFUSE       EVIDENCE_DECAYED
 
-  ledger    runs/run-bca842a03e40/ledger.jsonl
-  handoffs  1 dry run artifact(s) in runs/run-bca842a03e40/handoffs
+  ledger    runs/run-b2c8ca42cbe4/ledger.jsonl
+  handoffs  1 dry run artifact(s) in runs/run-b2c8ca42cbe4/handoffs
 
   Nothing was sent. This tool never sends mail.
   Inspect a decision with: node bin/signal-desk.mjs explain <lead>
   Act on what is parked with: node bin/signal-desk.mjs queue
 ```
 
-Eleven signals went in and one came out the far end. That ratio is the point. Nine were refused
+Twelve signals went in and one came out the far end. That ratio is the point. Ten were refused
 and one is waiting for a person, and every one of those outcomes names the rule that produced
 it.
 
@@ -71,6 +72,7 @@ working rather than asserting that they exist:
 | `UNGROUNDED_PROSE_CLAIM` | An industry string smuggling "now scaling after their Series C" into the body, which no cited source supports |
 | `RUBRIC_FAILED` | A draft every deterministic rule passes, pitched to the wrong reader. No regex catches that, which is what the judge is for |
 | `IDENTITY_CONTRADICTED` | A signal that is correct in every checkable way and names the wrong human. The person-level source puts that address at a different company |
+| `EVIDENCE_DECAYED` | A source that answers 200, in the right shape, with a record dated eleven months ago. A 200 is not freshness |
 | `REJECTED_BY_HUMAN` | A person said no |
 
 ## Inspect a decision
@@ -82,7 +84,7 @@ stage stood on.
 ```console
 $ node bin/signal-desk.mjs explain lead-29e94419ba7e
 lead lead-29e94419ba7e
-run  run-bca842a03e40
+run  run-b2c8ca42cbe4
 
   2026-03-01T09:00:00.000Z  ingest    PASS         system
       evidence  signal:sig-1001
@@ -125,7 +127,7 @@ and the lead parks again as `APPROVAL_STALE`. A refusal reads the same way.
 ```console
 $ node bin/signal-desk.mjs explain sig-9001
 lead sig-9001
-run  run-bca842a03e40
+run  run-b2c8ca42cbe4
 
   2026-03-01T09:00:35.000Z  ingest    REFUSE       system
       reasons   MALFORMED_PAYLOAD
@@ -144,11 +146,11 @@ makes the same decisions.
 
 <!-- verified-block: replay -->
 ```console
-$ node bin/signal-desk.mjs replay run-bca842a03e40
-hash chain verified across 64 entries
-seal verified: 1 passed, 1 parked, 9 refused, 11 in total
-replay of run-bca842a03e40 is an exact match
-64 entries, identical bytes, chain intact
+$ node bin/signal-desk.mjs replay run-b2c8ca42cbe4
+hash chain verified across 69 entries
+seal verified: 1 passed, 1 parked, 10 refused, 12 in total
+replay of run-b2c8ca42cbe4 is an exact match
+69 entries, identical bytes, chain intact
 ```
 
 If you edit a line in `runs/<run-id>/ledger.jsonl` and run `replay` again, it tells you which

@@ -179,6 +179,61 @@ test('no draft is ever composed for the wrong person', () => {
   );
 });
 
+// --- hostile fixture 8: the decayed record -------------------------------------------
+//
+// The source answers. It answers 200, in the right shape, with a headcount and an industry. The
+// record is eleven months old, and a 200 is not freshness. See docs/M3-SPEC.md part 1 (b).
+
+test('the decayed-enrichment fixture ships in the corpus, with a source that really does answer', () => {
+  const { signals, recordings } = loadFixtures();
+  assert.ok(signals.find((s) => s.id === 'sig-9008'), 'the signal is loaded');
+  const record = recordings['https://directory.test/company/cinder.test'];
+  assert.equal(record.status, 200, 'the source is reachable, so nothing about availability catches it');
+  assert.ok(record.body.claims.employee_count, 'and it carries a perfectly well-formed claim');
+});
+
+test('the decayed record is REFUSED with EVIDENCE_DECAYED, not with NO_CITED_CLAIMS', () => {
+  const lead = run.report.leads.find((l) => l.lead_id === leadIdForSignal('sig-9008'));
+  assert.equal(lead.final_status, 'REFUSE');
+  assert.deepEqual(lead.reason_codes, ['EVIDENCE_DECAYED']);
+});
+
+test('the decayed record is caught at enrich, and the trail names the date and the window', () => {
+  const leadId = leadIdForSignal('sig-9008');
+  const lead = run.report.leads.find((l) => l.lead_id === leadId);
+  assert.equal(lead.final_stage, 'enrich');
+
+  const drop = entriesFor(leadId).find((e) => e.reason_codes.includes('EVIDENCE_DECAYED') && e.verdict === 'PASS');
+  assert.ok(drop, 'the drop is recorded before the refusal, so a reader sees what was thrown away');
+  assert.match(drop.detail, /2025-04-02/, 'the date the record carried');
+  assert.match(drop.detail, /90 day/, 'and the window it fell outside');
+});
+
+test('the decayed lead still had its identity confirmed, so it fails for exactly one reason', () => {
+  // Fixture hygiene that is also the product claim. A hostile fixture that trips two safeguards
+  // proves neither of them, because the second one never had to work.
+  const leadId = leadIdForSignal('sig-9008');
+  assert.ok(entriesFor(leadId).some((e) => e.reason_codes.includes('IDENTITY_CONFIRMED')));
+});
+
+test('the decayed claim never reaches a draft, so an expired number is never stated as current', () => {
+  const leadId = leadIdForSignal('sig-9008');
+  assert.deepEqual(
+    run.ledger.entries().filter((e) => e.lead_id === leadId && e.stage === 'draft'),
+    [],
+  );
+});
+
+test('no claim anywhere in the demo run rests on a source the run did not date', () => {
+  // The corpus cannot contain an undated recording, because the rule that makes undated evidence
+  // unusable would then be untestable against the demo everyone actually runs.
+  const { recordings } = loadFixtures();
+  const undated = Object.entries(recordings)
+    .filter(([url]) => !url.startsWith('https://judge.test/'))
+    .filter(([, response]) => response.status === 200 && typeof response.body?.as_of !== 'string');
+  assert.deepEqual(undated.map(([url]) => url), []);
+});
+
 // --- the refusals are visible in the run's own report --------------------------------
 
 test('every refusal in the run names a reason code; none is unexplained', () => {

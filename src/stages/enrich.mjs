@@ -17,6 +17,55 @@ function expand(template, lead) {
     .replaceAll('{email}', lead.contact.email);
 }
 
+// --- evidence freshness ------------------------------------------------------------------
+//
+// A 200 is not freshness. A source can answer perfectly, in a well-formed shape, with a record
+// that was true two years ago, and headcount, funding stage and role are exactly the fields that
+// rot. Until M3 this pipeline would state any of them as a current fact.
+//
+// Every claim response must carry an `as_of` instant, and it is compared against the run's own
+// clock with peek() rather than now(), because a validation check must not advance the clock.
+// A ledger whose instants depend on how many branches a stage took is not replayable, which is
+// the rule ingest's replay window has followed since M1.
+//
+// THE UNDATED CASE IS THE LOAD-BEARING ONE, and it is M2's redaction argument applied to time.
+// Redaction is two passes because a single pass cannot tell "there was no PII" apart from "my
+// pattern did not match". A response with no `as_of` cannot tell "fetched fresh" apart from
+// "read out of a cache in 2019". Treating undated evidence as fresh would put the entire rule at
+// the mercy of a source that simply declines to date itself, which is the cheapest possible
+// bypass, so undated evidence is unusable and the corpus contains none.
+
+export const DEFAULT_MAX_EVIDENCE_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+
+// Returns null when the evidence is usable, or the reason it is not.
+function decayOf(response, ctx) {
+  const maxAgeMs = ctx.config.enrich?.maxEvidenceAgeMs ?? DEFAULT_MAX_EVIDENCE_AGE_MS;
+  const asOf = response.body?.as_of;
+
+  if (typeof asOf !== 'string' || Number.isNaN(Date.parse(asOf))) {
+    return {
+      code: 'EVIDENCE_UNDATED',
+      describe: (url) =>
+        `${url} answered 200 and its record carries no readable as_of, so its age cannot be ` +
+        'checked. Undated evidence is not fresh evidence; it is evidence of unknown age',
+    };
+  }
+
+  const ageMs = Date.parse(ctx.clock.peek()) - Date.parse(asOf);
+  if (ageMs > maxAgeMs) {
+    const days = Math.floor(ageMs / 86400000);
+    return {
+      code: 'EVIDENCE_DECAYED',
+      describe: (url) =>
+        `${url} answered with a record dated ${asOf}, which is ${days} days old and outside the ` +
+        `${Math.floor(maxAgeMs / 86400000)} day freshness window. A stale record stated as a ` +
+        'current fact is a false claim with a citation attached',
+    };
+  }
+
+  return null;
+}
+
 // --- identity verification -------------------------------------------------------------
 //
 // Whether the human this signal names is the human the evidence describes.
@@ -99,6 +148,11 @@ async function verifyIdentity(lead, ctx) {
 
   if (response.status !== 200) return unverified(`${url} answered ${response.status}`);
 
+  // An expired or undated person record cannot contradict anything. It is the same state as
+  // having no identity evidence at all, which is where every lead stood before M3.
+  const decay = decayOf(response, ctx);
+  if (decay !== null) return unverified(decay.describe(url));
+
   const identity = response.body?.identity;
   if (identity === null || typeof identity !== 'object' || Array.isArray(identity)) {
     return unverified(`${url} answered 200 and carried no identity record`);
@@ -142,6 +196,10 @@ export const enrich = {
     const claims = [];
     const citations = [];
     const entries = [];
+    // How many sources answered and were then thrown away for their age. It is what separates
+    // "everything we have is out of date" from "nothing knows this company", which are different
+    // problems that send a reader somewhere different.
+    let decayed = 0;
 
     // Identity first. See the block comment above for why the order is part of the rule.
     const identity = await verifyIdentity(lead, ctx);
@@ -174,6 +232,21 @@ export const enrich = {
         continue;
       }
 
+      // It answered, and what it said may still be too old to say. Dropped rather than
+      // downgraded: a claim nobody may state is not made safer by being left lying around
+      // where a later rule might pick it up.
+      const decay = decayOf(response, ctx);
+      if (decay !== null) {
+        decayed += 1;
+        entries.push({
+          verdict: 'PASS',
+          reason_codes: [decay.code],
+          evidence_refs: [url],
+          detail: decay.describe(url),
+        });
+        continue;
+      }
+
       citations.push(url);
       for (const [field, value] of Object.entries(response.body?.claims ?? {})) {
         claims.push({ field, value, citation: url, cited: true });
@@ -193,6 +266,20 @@ export const enrich = {
     }
 
     if (citations.length === 0) {
+      // Two codes, by cause, on the same argument ingest uses for DUPLICATE_SIGNAL versus
+      // DUPLICATE_LEAD: these are different events and a reader deserves to be told which one
+      // happened. "Every source we have is out of date" is a sourcing problem with a fix.
+      // "No source knows this company" may mean the company does not exist.
+      if (decayed > 0) {
+        return refuse({
+          reason: 'EVIDENCE_DECAYED',
+          entries,
+          detail:
+            `every source that answered carried a stale or undated record, so nothing this run ` +
+            'fetched can ground a claim. The sources are reachable; what they know is expired',
+        });
+      }
+
       return refuse({
         reason: 'NO_CITED_CLAIMS',
         entries,
