@@ -189,9 +189,10 @@ claim grounding is M2, along with the approval workflow and its `queue`, `approv
 `reject` verbs. The HTML dashboard and the rest of the hostile fixture suite are M3. Live mode
 is M4.
 
-One M1 limitation is worth naming because a test asserts it rather than hiding it. The gate
-verifies structured claim references, so a forged citation is caught. It does not yet catch a
-factual assertion written as free prose, because that needs the rubric. See
+The M1 limitation that a test used to pin is closed. The gate verifies structured claim
+references, so a forged citation is caught, and it now also reads the prose. A sentence
+asserting a funding round the sources do not support is refused with `UNGROUNDED_PROSE_CLAIM`,
+including when a cited claim of the right kind exists and contradicts it. See
 `test/adversarial.test.mjs`.
 
 ## Tests

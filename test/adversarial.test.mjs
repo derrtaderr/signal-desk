@@ -166,28 +166,44 @@ test('a draft asserting a claim no source backs is refused by the gate', async (
   });
   const report = await runPipeline({ stages: pipeline, signals: fixtures.signals, ctx, ledger });
 
-  // KNOWN M1 LIMITATION, asserted rather than hidden.
+  // The body asserts a Series C raise that no cited claim supports. It is free prose rather
+  // than a {claim:} placeholder, so it leaves no claim_ref for the structured grounding rule
+  // to check, and M1 let it through to handoff.
   //
-  // The body asserts a Series C raise that no cited claim supports. M1 does NOT catch it,
-  // and this test pins that fact: the lead reaches handoff. The assertion is free prose
-  // rather than a {claim:} placeholder, and catching prose needs the LLM rubric, which is
-  // M2. Writing this test as a pass would be claiming a safeguard the code does not have.
-  //
-  // When M2 lands the rubric this test FAILS, which is the point. Whoever lands it flips the
-  // expectation to REFUSE and deletes this comment.
-  const reachedHandoff = report.leads.filter((l) => l.final_stage === 'handoff');
-  assert.equal(
-    reachedHandoff.length,
-    1,
-    'M1 gap: an ungrounded prose claim reaches handoff, because only structured claim_refs are verified',
-  );
-  assert.equal(reachedHandoff[0].final_status, 'PASS');
-  assert.match(reachedHandoff[0].output.draft.body, /Series C/);
+  // M2's prose_grounding rule closes it. The lead is refused at the gate and nothing reaches
+  // handoff.
   assert.deepEqual(
-    reachedHandoff[0].output.draft.claim_refs,
+    report.leads.filter((l) => l.final_stage === 'handoff'),
     [],
-    'the draft carries no claim_refs at all, which is why the grounding rule found nothing to check',
+    'no lead reaches handoff; the ungrounded assertion is caught at the gate',
   );
+
+  // Two, not one. The poisoned template is 'executive-intro', and both leads in the priority
+  // band are routed to that play, so both receive the Series C assertion and both are caught.
+  const refused = report.leads.filter((l) => l.reason_codes.includes('UNGROUNDED_PROSE_CLAIM'));
+  assert.equal(refused.length, 2, 'every lead routed to the poisoned play was refused');
+  for (const lead of refused) {
+    assert.equal(lead.final_stage, 'gate');
+    assert.equal(lead.final_status, 'REFUSE');
+    assert.deepEqual(
+      lead.output.draft.claim_refs,
+      [],
+      'it carried no claim_refs at all, which is why only the prose rule could catch it',
+    );
+  }
+
+  // The interesting property is not merely that it refused. A cited funding_stage claim of
+  // "series B" EXISTS on the acme lead, fetched this run from the newsroom source. So this is
+  // a CONTRADICTION caught by a typed check, not an absence caught by a missing-field check.
+  // An untyped "is this token in any cited claim" rule would have to pass it.
+  const acme = ledger
+    .entries()
+    .find(
+      (e) =>
+        e.reason_codes.includes('UNGROUNDED_PROSE_CLAIM') && /series B/i.test(e.detail ?? ''),
+    );
+  assert.ok(acme, 'the acme refusal names the cited funding stage it contradicts');
+  assert.match(acme.detail, /Series C/i);
 });
 
 test('a draft carrying a forged citation IS caught by the gate today', async () => {
