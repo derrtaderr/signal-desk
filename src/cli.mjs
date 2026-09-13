@@ -9,7 +9,7 @@
 // does not exist.
 
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { executeFixtureRun, buildRun, loadFixtures } from './runner.mjs';
@@ -70,9 +70,14 @@ async function verbRun({ out, env, cwd }) {
     out(`  ${pad(lead.lead_id, 22)} ${pad(lead.final_stage, 9)} ${pad(lead.final_status, 12)} ${reason}`);
   }
 
+  // Relative to the working directory. An absolute path would make this output
+  // machine-specific, which breaks both the README example and the promise that a run
+  // carries no local state.
+  const show = (path) => relative(cwd, path) || path;
+
   out('');
-  out(`  ledger    ${join(dir, 'ledger.jsonl')}`);
-  out(`  handoffs  ${handed.length} dry run artifact(s) in ${handoffDir}`);
+  out(`  ledger    ${show(join(dir, 'ledger.jsonl'))}`);
+  out(`  handoffs  ${handed.length} dry run artifact(s) in ${show(handoffDir)}`);
   out('');
   out('  Nothing was sent. This tool never sends mail.');
   out(`  Inspect a decision with: signal-desk explain <lead>`);
