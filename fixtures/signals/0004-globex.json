@@ -1,0 +1,21 @@
+{
+  "id": "sig-1004",
+  "source": "rb2b",
+  "received_at": "2026-03-01T08:59:00.000Z",
+  "payload": {
+    "company": {
+      "name": "Globex Industrial",
+      "domain": "globex.test"
+    },
+    "contact": {
+      "name": "Robin Vale",
+      "email": "robin@globex.test",
+      "title": "Head of Sales Operations"
+    },
+    "intent": {
+      "page": "/demo",
+      "visits": 3
+    }
+  },
+  "signature": "7191960ee9667a2f36fc23953b6e5c9498233458964c148f8d1f60b64d1128d3"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "sig-9001",
+  "source": "rb2b",
+  "received_at": "2026-03-01T08:59:30.000Z",
+  "payload": {
+    "company": {
+      "name": "Mystery Co"
+    },
+    "contact": {
+      "email": "someone@mystery.test"
+    },
+    "intent": {
+      "page": "/pricing",
+      "visits": 2
+    }
+  },
+  "signature": "4417d267dd2ec77c9791822ac53acae986b394ca9f587c71c43ee8e06f7a9f45"
+}
