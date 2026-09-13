@@ -43,6 +43,13 @@ export const defaultConfig = {
     // Widening it is a decision somebody makes on purpose; a source that quietly declines to
     // date itself is not, which is why undated evidence is unusable at any window width.
     maxEvidenceAgeMs: 90 * 24 * 60 * 60 * 1000,
+
+    // How far ahead of this run's clock a source's `as_of` may sit before the record is refused
+    // as future-dated. An honest server can run a minute fast; a record dated next year is either
+    // clock-broken or claiming a freshness it cannot have. Five minutes is the line between
+    // catching a lie and punishing a rounding error. See the posture note in src/stages/enrich.mjs:
+    // `as_of` is the SOURCE's assertion, and checking it is a bound on trust, not a verification.
+    clockSkewToleranceMs: 5 * 60 * 1000,
   },
 
   score: {

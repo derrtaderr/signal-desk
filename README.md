@@ -27,7 +27,7 @@ machine as on anyone else's.
 <!-- verified-block: run -->
 ```console
 $ node bin/signal-desk.mjs run
-run run-cc483f9d8434
+run run-0ee31e2eaced
 
   1 passed to handoff
   1 awaiting a human
@@ -49,8 +49,8 @@ run run-cc483f9d8434
   lead-f4a249c336f5      gate      REFUSE       PROMPT_INJECTION
   lead-03ceebb25be4      enrich    REFUSE       NO_CITED_CLAIMS
 
-  ledger    runs/run-cc483f9d8434/ledger.jsonl
-  handoffs  1 dry run artifact(s) in runs/run-cc483f9d8434/handoffs
+  ledger    runs/run-0ee31e2eaced/ledger.jsonl
+  handoffs  1 dry run artifact(s) in runs/run-0ee31e2eaced/handoffs
 
   Nothing was sent. This tool never sends mail.
   Inspect a decision with: node bin/signal-desk.mjs explain <lead>
@@ -88,7 +88,7 @@ stage stood on.
 ```console
 $ node bin/signal-desk.mjs explain lead-29e94419ba7e
 lead lead-29e94419ba7e
-run  run-cc483f9d8434
+run  run-0ee31e2eaced
 
   2026-03-01T09:00:00.000Z  ingest    PASS         system
       evidence  signal:sig-1001
@@ -131,7 +131,7 @@ and the lead parks again as `APPROVAL_STALE`. A refusal reads the same way.
 ```console
 $ node bin/signal-desk.mjs explain sig-9001
 lead sig-9001
-run  run-cc483f9d8434
+run  run-0ee31e2eaced
 
   2026-03-01T09:00:35.000Z  ingest    REFUSE       system
       reasons   MALFORMED_PAYLOAD
@@ -150,10 +150,10 @@ makes the same decisions.
 
 <!-- verified-block: replay -->
 ```console
-$ node bin/signal-desk.mjs replay run-cc483f9d8434
+$ node bin/signal-desk.mjs replay run-0ee31e2eaced
 hash chain verified across 83 entries
 seal verified: 1 passed, 1 parked, 12 refused, 14 in total
-replay of run-cc483f9d8434 is an exact match
+replay of run-0ee31e2eaced is an exact match
 83 entries, identical bytes, chain intact
 ```
 
@@ -175,13 +175,13 @@ id means the latest run.
 <!-- verified-block: dashboard -->
 ```console
 $ node bin/signal-desk.mjs dashboard
-dashboard run-cc483f9d8434
+dashboard run-0ee31e2eaced
 
   83 ledger entries across 14 lead(s)
   1 passed, 1 parked, 12 refused
   12 distinct refusal reason(s), 2 human decision(s)
 
-  runs/run-cc483f9d8434/dashboard.html
+  runs/run-0ee31e2eaced/dashboard.html
 
   Open it in a browser. It is one file, works offline, and fetches nothing.
   It is a read-only view. Decisions are still made with: node bin/signal-desk.mjs approve <id>

@@ -36,11 +36,32 @@ function expand(template, lead) {
 // the mercy of a source that simply declines to date itself, which is the cheapest possible
 // bypass, so undated evidence is unusable and the corpus contains none.
 
+// WHAT AN as_of IS, stated because M4 is where it stops being a value this repo committed and
+// starts being whatever a stranger's server says.
+//
+// `as_of` is an ASSERTION BY THE SOURCE. It is not a verification by this pipeline, and no plain
+// GET can make it one. A source that lies about its dates defeats this rule completely and
+// nothing here will notice.
+//
+// What the rule does buy, stated precisely so nobody over-reads it: it catches the CARELESS
+// source, the one honestly serving a stale record with an honest date, which is the common case.
+// And it forces the dishonest source to lie EXPLICITLY and in writing, which is a rarer failure
+// than negligence and leaves a dated artifact in the ledger for somebody to find. That is a
+// smaller claim than "freshness is verified" and it is the true one.
+//
+// The one thing self-assertion cannot buy is a date in the FUTURE. A source cannot have observed
+// something that has not happened, so a future as_of is a broken clock or an attempt to sit
+// permanently inside the freshness window, and either way the record's real age is unknowable —
+// which is the undated case wearing a date. The skew tolerance exists because an honest clock
+// can run a minute fast, and punishing that would be catching a rounding error rather than a lie.
+
 export const DEFAULT_MAX_EVIDENCE_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+export const DEFAULT_CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000;
 
 // Returns null when the evidence is usable, or the reason it is not.
 function decayOf(response, ctx) {
   const maxAgeMs = ctx.config.enrich?.maxEvidenceAgeMs ?? DEFAULT_MAX_EVIDENCE_AGE_MS;
+  const toleranceMs = ctx.config.enrich?.clockSkewToleranceMs ?? DEFAULT_CLOCK_SKEW_TOLERANCE_MS;
   const asOf = response.body?.as_of;
 
   if (typeof asOf !== 'string' || Number.isNaN(Date.parse(asOf))) {
@@ -53,6 +74,19 @@ function decayOf(response, ctx) {
   }
 
   const ageMs = Date.parse(ctx.clock.peek()) - Date.parse(asOf);
+
+  if (ageMs < -toleranceMs) {
+    return {
+      code: 'EVIDENCE_FUTURE_DATED',
+      describe: (url) =>
+        `${url} answered with a record dated ${asOf}, which is after this run's own clock by ` +
+        `more than the ${Math.floor(toleranceMs / 1000)}s skew tolerance. A source cannot have ` +
+        'observed something that has not happened, so the record is either clock-broken or ' +
+        'claiming a freshness it cannot have. Its real age is unknowable, which is the undated ' +
+        'case wearing a date',
+    };
+  }
+
   if (ageMs > maxAgeMs) {
     const days = Math.floor(ageMs / 86400000);
     return {
@@ -221,8 +255,13 @@ export const enrich = {
     const entries = [];
     // How many sources answered and were then thrown away for their age. It is what separates
     // "everything we have is out of date" from "nothing knows this company", which are different
-    // problems that send a reader somewhere different.
+    // problems that send a reader somewhere different. The codes are collected too, so the
+    // refusal can name what actually happened rather than assume it was staleness.
     let decayed = 0;
+    const decayCodes = new Set();
+    // The instants at which THIS RUN fetched, as reported by the transport. Absent in fixture
+    // mode, where the responses were recorded rather than observed.
+    const observed = [];
 
     // Identity first. See the block comment above for why the order is part of the rule.
     const identity = await verifyIdentity(lead, ctx);
@@ -261,6 +300,7 @@ export const enrich = {
       const decay = decayOf(response, ctx);
       if (decay !== null) {
         decayed += 1;
+        decayCodes.add(decay.code);
         entries.push({
           verdict: 'PASS',
           reason_codes: [decay.code],
@@ -271,6 +311,7 @@ export const enrich = {
       }
 
       citations.push(url);
+      if (typeof response.fetched_at === 'string') observed.push(response.fetched_at);
       for (const [field, value] of Object.entries(response.body?.claims ?? {})) {
         // Flagged, not dropped, and not refused. Enrich is not a gate, and the gate is the
         // stage whose job is judging text. Dropping it here would make the lead refuse for a
@@ -323,8 +364,9 @@ export const enrich = {
           reason: 'EVIDENCE_DECAYED',
           entries,
           detail:
-            `every source that answered carried a stale or undated record, so nothing this run ` +
-            'fetched can ground a claim. The sources are reachable; what they know is expired',
+            `every source that answered carried a record this run cannot date or cannot use ` +
+            `(${[...decayCodes].sort().join(', ')}), so nothing this run fetched can ground a ` +
+            'claim. The sources are reachable; what they know is unusable',
         });
       }
 
@@ -339,10 +381,27 @@ export const enrich = {
     claims.sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
     citations.sort();
 
+    // Two dates, and the entry says which is which. `fetched_at` is this run's own observation
+    // and is verified by construction; `as_of` is the source's assertion about when its record
+    // was true. Conflating them would let a source's claim about the past borrow the authority
+    // of something we actually did. Only live transports report an observation, so a fixture
+    // run's entry is unchanged.
+    const observation =
+      observed.length === 0
+        ? {}
+        : {
+            detail:
+              `${observed.length} of ${citations.length} citation(s) were fetched by this run ` +
+              `between ${observed.slice().sort()[0]} and ${observed.slice().sort().pop()}. That ` +
+              'instant is this run\'s own observation; every as_of beside it is the source\'s ' +
+              'assertion about its record and is not verified by this pipeline',
+          };
+
     return pass({
       output: { ...lead, claims, citations },
       entries,
       evidence_refs: citations,
+      ...observation,
     });
   },
 };
