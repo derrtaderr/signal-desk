@@ -125,7 +125,7 @@ export function buildDraftPrompt(lead, { play, brief } = {}) {
 // human. Stripping that is not leniency about the SHAPE, which stays strict: after the wrapper is
 // removed the whole remaining text must parse, so an object embedded in prose is still a refusal.
 // Scanning prose for the first {...} is how a system ends up parsing an example the model gave.
-function unwrap(text) {
+export function unwrapJson(text) {
   const trimmed = String(text ?? '').trim();
   const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n?```$/.exec(trimmed);
   return fenced === null ? trimmed : fenced[1].trim();
@@ -147,7 +147,7 @@ function isNonEmptyString(value) {
 export function parseDraftResponse(text) {
   let parsed;
   try {
-    parsed = JSON.parse(unwrap(text));
+    parsed = JSON.parse(unwrapJson(text));
   } catch (error) {
     throw new DraftResponseError(
       `the model did not answer with the JSON object this stage asked for: ${error.message}`,
