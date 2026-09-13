@@ -1,13 +1,15 @@
 // Test family 3 of 4 — adversarial.
 //
-// M1 requires two hostile fixtures to REFUSE with the expected reason codes: the malformed
-// webhook and the duplicate signal. The rest of the design's hostile suite (wrong-person
-// match, decayed enrichment, prompt injection, PII mid-enrichment, hallucination bait) is
-// M3 and is deliberately not here.
+// DESIGN.md §7 lists the hostile inputs the corpus must ship, each ending in a VISIBLE catch
+// with a full ledger trail. M1 landed the malformed webhook and the duplicate signal, M2 added
+// PII mid-enrichment, the rubric failure and the ungrounded prose claim, and M3 closes the list
+// with the wrong-person match, the decayed record, the prompt injection and the hallucination
+// bait. Nothing on that list is outstanding now.
 //
-// Each catch is asserted three ways: the lead is refused, the reason code is the expected
-// one, and the ledger carries a trail a human can read. A refusal with no trail is not an
-// inspectable system.
+// Each catch is asserted four ways: the lead is refused, the reason code is the expected one,
+// the catch happens at the stage that OWNS it rather than merely somewhere downstream, and the
+// ledger carries a trail a human can read. A refusal with no trail is not an inspectable system,
+// and a refusal at the wrong stage is a coincidence rather than a safeguard.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -116,6 +118,65 @@ test('exactly one draft was produced for the replayed pair, not two', () => {
     .entries()
     .filter((e) => e.stage === 'draft' && e.lead_id === acmeLeadId && e.verdict === 'PASS');
   assert.equal(drafts.length, 1);
+});
+
+// --- hostile fixture 7: the wrong-person match ---------------------------------------
+//
+// The signal is valid in every way a webhook can be checked. It is correctly signed, in window,
+// not a duplicate, and it names a real-looking company and a real-looking contact. What is wrong
+// with it is not visible at ingest at all: the person-level source says that address belongs to
+// someone at a different company. See docs/M3-SPEC.md part 1 (a).
+
+// The lead id is derived from the domain and the address, so it is looked up through the
+// signal that produced it rather than pasted in as a literal a template change would strand.
+function leadIdForSignal(signalId) {
+  const entry = run.ledger
+    .entries()
+    .find((e) => e.stage === 'ingest' && e.evidence_refs.includes(`signal:${signalId}`));
+  return entry?.lead_id;
+}
+
+test('the wrong-person fixture ships in the corpus and is a perfectly valid webhook', () => {
+  const { signals } = loadFixtures();
+  const signal = signals.find((s) => s.id === 'sig-9007');
+  assert.ok(signal, 'fixtures/signals/9007-wrong-person-match.json is loaded');
+  assert.equal(
+    signal.signature,
+    signPayload(FIXTURE_SECRET, signal.payload),
+    'correctly signed, so nothing at ingest can catch it',
+  );
+  assert.ok(signal.payload.company.domain, 'and well formed, so the shape check cannot either');
+});
+
+test('the wrong-person match is REFUSED with IDENTITY_CONTRADICTED', () => {
+  const lead = run.report.leads.find((l) => l.lead_id === leadIdForSignal('sig-9007'));
+  assert.equal(lead.final_status, 'REFUSE');
+  assert.deepEqual(lead.reason_codes, ['IDENTITY_CONTRADICTED']);
+});
+
+test('the wrong-person match is caught at enrich, the stage that holds the evidence', () => {
+  const lead = run.report.leads.find((l) => l.lead_id === leadIdForSignal('sig-9007'));
+  assert.equal(lead.final_stage, 'enrich');
+  const stages = entriesFor(lead.lead_id).map((e) => e.stage);
+  assert.deepEqual([...new Set(stages)], ['ingest', 'enrich'], 'nothing scored, routed or drafted');
+});
+
+test('the wrong-person refusal names both the company claimed and the company recorded', () => {
+  const leadId = leadIdForSignal('sig-9007');
+  const refusal = entriesFor(leadId).find((e) => e.verdict === 'REFUSE');
+  assert.match(refusal.detail, /meridian\.test/, 'the company the signal claimed');
+  assert.match(refusal.detail, /harborline\.test/, 'the company the person record puts them at');
+  assert.ok(refusal.evidence_refs.length > 0, 'and cites the source it stood on');
+});
+
+test('no draft is ever composed for the wrong person', () => {
+  // The point of catching it at enrich. A message to the wrong human is not made safer by being
+  // written first and refused later.
+  const leadId = leadIdForSignal('sig-9007');
+  assert.deepEqual(
+    run.ledger.entries().filter((e) => e.lead_id === leadId && e.stage === 'draft'),
+    [],
+  );
 });
 
 // --- the refusals are visible in the run's own report --------------------------------

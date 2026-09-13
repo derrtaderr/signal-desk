@@ -77,5 +77,85 @@
         "industry": "orbital logistics software, now scaling after their Series C"
       }
     }
+  },
+  "https://people.test/dana@acme.test": {
+    "status": 200,
+    "body": {
+      "identity": {
+        "name": "Dana Ruiz",
+        "email": "dana@acme.test",
+        "company_domain": "acme.test"
+      }
+    }
+  },
+  "https://people.test/sam@northwind.test": {
+    "status": 200,
+    "body": {
+      "identity": {
+        "name": "Sam Patel",
+        "email": "sam@northwind.test",
+        "company_domain": "northwind.test"
+      }
+    }
+  },
+  "https://people.test/alex@tiny.test": {
+    "status": 200,
+    "body": {
+      "identity": {
+        "name": "Alex Doe",
+        "email": "alex@tiny.test",
+        "company_domain": "tiny.test"
+      }
+    }
+  },
+  "https://people.test/robin@globex.test": {
+    "status": 200,
+    "body": {
+      "identity": {
+        "name": "Robin Vale",
+        "email": "robin@globex.test",
+        "company_domain": "globex.test"
+      }
+    }
+  },
+  "https://people.test/morgan@vertex.test": {
+    "status": 200,
+    "body": {
+      "identity": {
+        "name": "Morgan Hale",
+        "email": "morgan@vertex.test",
+        "company_domain": "vertex.test"
+      }
+    }
+  },
+  "https://people.test/priya@halcyon.test": {
+    "status": 200,
+    "body": {
+      "identity": {
+        "name": "Priya Raman",
+        "email": "priya@halcyon.test",
+        "company_domain": "halcyon.test"
+      }
+    }
+  },
+  "https://people.test/chris@orbital.test": {
+    "status": 200,
+    "body": {
+      "identity": {
+        "name": "Chris Okafor",
+        "email": "chris@orbital.test",
+        "company_domain": "orbital.test"
+      }
+    }
+  },
+  "https://people.test/jordan@meridian.test": {
+    "status": 200,
+    "body": {
+      "identity": {
+        "name": "Jordan Blake",
+        "email": "jordan@meridian.test",
+        "company_domain": "harborline.test"
+      }
+    }
   }
 }

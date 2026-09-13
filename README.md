@@ -27,12 +27,12 @@ machine as on anyone else's.
 <!-- verified-block: run -->
 ```console
 $ node bin/signal-desk.mjs run
-run run-130ed5b0a32e
+run run-bca842a03e40
 
   1 passed to handoff
   1 awaiting a human
-  8 refused
-  10 signals in total
+  9 refused
+  11 signals in total
 
   lead-29e94419ba7e      handoff   PASS         
   sig-1001               ingest    REFUSE       DUPLICATE_SIGNAL
@@ -44,16 +44,17 @@ run run-130ed5b0a32e
   lead-6dfbc9615067      gate      REFUSE       RUBRIC_FAILED
   lead-3a8cab6564a2      gate      REFUSE       UNGROUNDED_PROSE_CLAIM
   sig-9006               ingest    REFUSE       DUPLICATE_LEAD
+  lead-aa10c945e3bf      enrich    REFUSE       IDENTITY_CONTRADICTED
 
-  ledger    runs/run-130ed5b0a32e/ledger.jsonl
-  handoffs  1 dry run artifact(s) in runs/run-130ed5b0a32e/handoffs
+  ledger    runs/run-bca842a03e40/ledger.jsonl
+  handoffs  1 dry run artifact(s) in runs/run-bca842a03e40/handoffs
 
   Nothing was sent. This tool never sends mail.
   Inspect a decision with: node bin/signal-desk.mjs explain <lead>
   Act on what is parked with: node bin/signal-desk.mjs queue
 ```
 
-Ten signals went in and one came out the far end. That ratio is the point. Eight were refused
+Eleven signals went in and one came out the far end. That ratio is the point. Nine were refused
 and one is waiting for a person, and every one of those outcomes names the rule that produced
 it.
 
@@ -69,6 +70,7 @@ working rather than asserting that they exist:
 | `PII_IN_BODY` | A scraped directory page with a phone number in its industry field, interpolated straight into the draft |
 | `UNGROUNDED_PROSE_CLAIM` | An industry string smuggling "now scaling after their Series C" into the body, which no cited source supports |
 | `RUBRIC_FAILED` | A draft every deterministic rule passes, pitched to the wrong reader. No regex catches that, which is what the judge is for |
+| `IDENTITY_CONTRADICTED` | A signal that is correct in every checkable way and names the wrong human. The person-level source puts that address at a different company |
 | `REJECTED_BY_HUMAN` | A person said no |
 
 ## Inspect a decision
@@ -80,31 +82,39 @@ stage stood on.
 ```console
 $ node bin/signal-desk.mjs explain lead-29e94419ba7e
 lead lead-29e94419ba7e
-run  run-130ed5b0a32e
+run  run-bca842a03e40
 
   2026-03-01T09:00:00.000Z  ingest    PASS         system
       evidence  signal:sig-1001
   2026-03-01T09:00:01.000Z  enrich    PASS         system
+      reasons   IDENTITY_CONFIRMED
+      detail    https://people.test/dana@acme.test confirms Dana Ruiz at acme.test
+      evidence  https://people.test/dana@acme.test
+  2026-03-01T09:00:02.000Z  enrich    PASS         system
       evidence  https://directory.test/company/acme.test
                 https://newsroom.test/acme.test
-  2026-03-01T09:00:02.000Z  score     PASS         system
+  2026-03-01T09:00:03.000Z  score     PASS         system
       evidence  https://directory.test/company/acme.test
-  2026-03-01T09:00:03.000Z  route     PASS         system
-  2026-03-01T09:00:04.000Z  draft     PASS         system
+  2026-03-01T09:00:04.000Z  route     PASS         system
+  2026-03-01T09:00:05.000Z  draft     PASS         system
       evidence  https://directory.test/company/acme.test
-  2026-03-01T09:00:05.000Z  gate      PASS         system
-  2026-03-01T09:00:06.000Z  queue     PASS         human
+  2026-03-01T09:00:06.000Z  gate      PASS         system
+  2026-03-01T09:00:07.000Z  queue     PASS         human
       reasons   APPROVED_BY_HUMAN
       detail    dana.reviewer approved draft draft-b66622be1a11d3db at 2026-03-01T08:56:00.000Z
       evidence  draft:draft-b66622be1a11d3db
-  2026-03-01T09:00:07.000Z  queue     PASS         system
+  2026-03-01T09:00:08.000Z  queue     PASS         system
       evidence  draft:draft-b66622be1a11d3db
-  2026-03-01T09:00:08.000Z  handoff   PASS         system
+  2026-03-01T09:00:09.000Z  handoff   PASS         system
       evidence  https://directory.test/company/acme.test
                 https://newsroom.test/acme.test
 
   outcome: PASS at handoff
 ```
+
+The first enrich line is the identity check. Before anything asks what is true about the
+company, something asks whether the human the signal names is the human the evidence describes.
+A record that disagrees stops the lead there, which is the `IDENTITY_CONTRADICTED` row above.
 
 Note the `human` actor on the queue line. A person approved that draft, and the ledger records
 who, when, and **which draft**. An approval binds to a hash of the message content, never to
@@ -115,9 +125,9 @@ and the lead parks again as `APPROVAL_STALE`. A refusal reads the same way.
 ```console
 $ node bin/signal-desk.mjs explain sig-9001
 lead sig-9001
-run  run-130ed5b0a32e
+run  run-bca842a03e40
 
-  2026-03-01T09:00:31.000Z  ingest    REFUSE       system
+  2026-03-01T09:00:35.000Z  ingest    REFUSE       system
       reasons   MALFORMED_PAYLOAD
       detail    signal is malformed: payload.company.domain
 
@@ -134,11 +144,11 @@ makes the same decisions.
 
 <!-- verified-block: replay -->
 ```console
-$ node bin/signal-desk.mjs replay run-130ed5b0a32e
-hash chain verified across 55 entries
-seal verified: 1 passed, 1 parked, 8 refused, 10 in total
-replay of run-130ed5b0a32e is an exact match
-55 entries, identical bytes, chain intact
+$ node bin/signal-desk.mjs replay run-bca842a03e40
+hash chain verified across 64 entries
+seal verified: 1 passed, 1 parked, 9 refused, 11 in total
+replay of run-bca842a03e40 is an exact match
+64 entries, identical bytes, chain intact
 ```
 
 If you edit a line in `runs/<run-id>/ledger.jsonl` and run `replay` again, it tells you which
