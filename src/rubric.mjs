@@ -110,7 +110,16 @@ export async function evaluateRubric(draftHash, ctx, config) {
 
   // A judge contradicting itself resolves to the safe reading. A single failing criterion is a
   // failure however the overall line was filled in.
-  const failing = required.map((name) => byName.get(name)).filter((c) => c.verdict === 'FAIL');
+  //
+  // EVERY criterion, not just the required ones. A judge that volunteers a failure nobody
+  // thought to ask about is doing the most valuable thing a judge does, and discarding it
+  // inverts this module's one rule: "silence is not a pass" exists so an unanswered question
+  // cannot read as approval, and ignoring a volunteered FAIL is that mistake pointed the other
+  // way, treating something the judge actually SAID as if it had not been said.
+  //
+  // requiredCriteria stays what it is: the list of questions that MUST be answered. It was
+  // never meant to be the list of answers allowed to matter.
+  const failing = [...byName.values()].filter((c) => c.verdict === 'FAIL');
   if (failing.length > 0 || body.verdict === 'FAIL') {
     const detail =
       failing.length > 0
@@ -119,8 +128,10 @@ export async function evaluateRubric(draftHash, ctx, config) {
     return { ok: false, code: 'RUBRIC_FAILED', detail };
   }
 
+  // Everything the judge answered is reported, not just what was asked, so a pass is inspectable
+  // in full and an extra criterion is not silently dropped from the record.
   return {
     ok: true,
-    criteria: required.map((name) => ({ name, verdict: byName.get(name).verdict })),
+    criteria: [...byName.values()].map((c) => ({ name: c.name, verdict: c.verdict })),
   };
 }
