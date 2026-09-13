@@ -174,14 +174,16 @@ test('the replay window check does not consume clock ticks, so it cannot shift t
 
 test('a signal whose id already passed ingest in the ledger REFUSES with DUPLICATE_SIGNAL', async () => {
   const { ledger, ctx } = makeCtx();
+  // A passing ingest entry files under the canonical lead id, not the signal id, so the
+  // idempotency lookup keys on the evidence ref that names the signal.
   ledger.append({
     ts: '2026-03-01T08:59:59.000Z',
     run_id: 'run-test',
-    lead_id: 'sig-1',
+    lead_id: 'lead-000000000000',
     stage: 'ingest',
     verdict: 'PASS',
     reason_codes: [],
-    evidence_refs: [],
+    evidence_refs: ['signal:sig-1'],
     actor: 'system',
   });
   const result = await ingest.run(validSignal(), ctx);
@@ -198,7 +200,7 @@ test('a prior REFUSED ingest for the same id does not count as a duplicate', asy
     stage: 'ingest',
     verdict: 'REFUSE',
     reason_codes: ['SIGNATURE_INVALID'],
-    evidence_refs: [],
+    evidence_refs: ['signal:sig-1'],
     actor: 'system',
   });
   const result = await ingest.run(validSignal(), ctx);

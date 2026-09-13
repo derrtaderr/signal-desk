@@ -54,6 +54,7 @@ export function createContext({ ledger, clock, fetch, config, run_id }) {
     config: Object.freeze({ ...config }),
     ledger: Object.freeze({
       append: (entry) => ledger.append(entry),
+      entries: () => ledger.entries(),
       entriesFor: (leadId) => ledger.entriesFor(leadId),
       head: () => ledger.head(),
     }),

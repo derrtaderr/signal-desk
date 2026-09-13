@@ -47,8 +47,6 @@ export async function runPipeline({ stages, signals, ctx, ledger }) {
     let reasonCodes = [];
 
     for (const stage of stages) {
-      // The id stamped on this stage's entries is the id we knew when the stage began.
-      const stampedLeadId = leadId;
       let result;
 
       try {
@@ -63,6 +61,19 @@ export async function runPipeline({ stages, signals, ctx, ledger }) {
           detail: error.message,
         };
       }
+
+      // A stage may assign the canonical lead id — ingest does, deriving it from the
+      // company and contact. Adopt it BEFORE stamping, so every entry for this stage,
+      // including ingest's own verdict, files under one id and `explain <lead>` returns the
+      // whole trail rather than one that starts at the second stage. What we knew before is
+      // not lost: ingest records `signal:<id>` in its evidence.
+      if (result.status === PASS) {
+        const assigned = result.output;
+        if (assigned && typeof assigned === 'object' && typeof assigned.lead_id === 'string') {
+          leadId = assigned.lead_id;
+        }
+      }
+      const stampedLeadId = leadId;
 
       const stamp = (entry) => ({
         reason_codes: [],
@@ -95,9 +106,6 @@ export async function runPipeline({ stages, signals, ctx, ledger }) {
       if (result.status !== PASS) break;
 
       input = result.output;
-      if (input && typeof input === 'object' && typeof input.lead_id === 'string') {
-        leadId = input.lead_id;
-      }
     }
 
     leads.push({
