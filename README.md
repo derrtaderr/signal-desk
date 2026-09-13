@@ -163,9 +163,61 @@ else defines it.
 | 3 | score | The total is exactly the sum of named factors, each carrying its points, its reason, and its evidence |
 | 4 | route | A deterministic band decision with the reason attached |
 | 5 | draft | Composes the message. A factual placeholder resolves only from a cited claim |
-| 6 | gate | Deterministic rules that can refuse. Fails closed, so a gate that errors refuses |
-| 7 | queue | Everything parks for a human by default. This is the send boundary |
-| 8 | handoff | Builds a dry-run artifact through a pluggable adapter. Never sends |
+| 6 | gate | Three parts: fail-closed PII redaction, deterministic rules plus a fail-closed LLM rubric, and claim grounding over both structured references and prose. A gate that errors refuses |
+| 7 | queue | Everything parks for a human by default. An approval binds to the draft's content hash, never to the lead. This is the send boundary |
+| 8 | handoff | Renders an artifact through a documented adapter contract. Only approved draft hashes are exportable, and an export cannot overwrite a different one. Never sends |
+
+## The three-part gate
+
+Stage 6 is where most of the refusing happens, and it is three separate disciplines rather than
+one list of rules.
+
+**Fail-closed PII redaction.** Not one regex pass that reports what it matched, because that
+cannot tell "there was no PII" apart from "my pattern did not match". Redaction and verification
+are two passes with two different detectors, and the draft is refused when the second pass still
+finds something. Finding a phone number is `PII_IN_BODY` and means everything worked. Residue
+after redaction is `REDACTION_INCOMPLETE`, which is worse: the gate cannot characterise what it
+is holding. Nothing is ever sent in redacted form; redaction here is how the check earns a
+proof, not a repair.
+
+**A fail-closed LLM rubric.** Silence is not a pass. A judge that could not be reached, answered
+about a different draft, returned a shape this code cannot read, or left a required criterion
+unanswered has approved nothing, and each of those is its own reason code. In fixture mode the
+judge is a recorded response addressed by draft hash, which keeps the demo keyless and stops a
+recorded verdict from outliving the draft it judged. Live mode (M4) swaps the fetcher and
+changes nothing else.
+
+**Claim grounding, over prose as well as references.** A `{claim:}` placeholder leaves a
+structured reference the gate can verify. A sentence asserting a funding round leaves nothing,
+which is how that used to get through. The prose check is typed: a funding claim grounds only
+against a cited `funding_stage`, a headcount only against a cited `employee_count`. Typing is
+what makes it correct rather than merely strict, and it is what lets a *contradiction* refuse.
+
+## The approval queue
+
+The pipeline parks every survivor. `queue` shows what is waiting, `approve` and `reject` record
+a decision, and the next run acts on it.
+
+```console
+$ node bin/signal-desk.mjs queue
+$ node bin/signal-desk.mjs approve <draft-hash> --by you
+$ node bin/signal-desk.mjs reject <draft-hash> --note "wrong persona"
+$ node bin/signal-desk.mjs run
+```
+
+Any unambiguous prefix of a draft hash or a lead id works, because nobody retypes a hash. An
+ambiguous one is an error rather than a guess.
+
+**An approval binds to a hash of the draft's content, never to the lead.** This is the whole
+design of the queue, and it exists because the alternative was tried: keying by lead meant one
+recorded approval released a second draft the human had never seen. Edit a single character and
+the old decision stops covering the draft, so the lead parks again as `APPROVAL_STALE` rather
+than going out unread. Handoff re-checks the same binding, so only an approved draft hash is
+exportable.
+
+Decisions are written to `runs/approvals.jsonl` as an append-only, hash-chained ledger with
+`actor: human`. Rewriting which draft a decision covers is precisely the attack the content hash
+exists to stop, so the file holding the binding gets the same tamper-evidence as the run ledger.
 
 ## The stage contract
 
@@ -213,19 +265,19 @@ hosted, and there is no telemetry and no account.
 
 ## What this milestone is
 
-M1 is the kernel, the stage contract, the ledger, all eight stages running end to end in
-fixture mode, and the `run`, `explain` and `replay` verbs.
+M1 built the kernel, the stage contract, the hash-chained ledger, all eight stages end to end in
+fixture mode, and `run`, `explain` and `replay`.
 
-Deliberately not here yet. The full three-part gate with PII redaction, an LLM rubric and
-claim grounding is M2, along with the approval workflow and its `queue`, `approve` and
-`reject` verbs. The HTML dashboard and the rest of the hostile fixture suite are M3. Live mode
-is M4.
+M2 is the depth: the three-part gate, the approval queue and its `queue`, `approve` and `reject`
+verbs, the adapter contract with a second conforming adapter, and a terminal seal that makes a
+truncated ledger detectable. It also decided the identity model M1 left unowned, which is why a
+second signal for one person is now refused rather than doubling the motion.
 
-The M1 limitation that a test used to pin is closed. The gate verifies structured claim
-references, so a forged citation is caught, and it now also reads the prose. A sentence
-asserting a funding round the sources do not support is refused with `UNGROUNDED_PROSE_CLAIM`,
-including when a cited claim of the right kind exists and contradicts it. See
-`test/adversarial.test.mjs`.
+Deliberately not here yet. The HTML dashboard and the rest of the hostile fixture suite are M3.
+Live mode and real keys are M4. Sending is non-scope in every milestone.
+
+The M1 limitation that a test used to pin is closed, and the test was flipped rather than
+deleted. See `test/adversarial.test.mjs`.
 
 ## Tests
 

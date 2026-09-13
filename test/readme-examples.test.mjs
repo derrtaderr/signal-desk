@@ -116,18 +116,44 @@ test('the README run id matches the one the pipeline actually produces', async (
 
 test('every CLI verb the README shows actually exists', async () => {
   const { USAGE } = await import('../src/cli.mjs');
-  for (const verb of ['run', 'explain', 'replay']) {
+  for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay']) {
     assert.ok(USAGE.includes(verb), `usage documents ${verb}`);
     assert.ok(README.includes(`bin/signal-desk.mjs ${verb}`), `README shows ${verb}`);
   }
 });
 
+test('every verb the CLI dispatches is one the README shows', async () => {
+  // The other direction. A verb that works but is documented nowhere is as much a gap as a
+  // verb the README promises and the CLI does not have.
+  const { main } = await import('../src/cli.mjs');
+  for (const verb of ['run', 'queue', 'approve', 'reject', 'explain', 'replay']) {
+    const lines = [];
+    await main({ argv: [verb], out: () => {}, err: (line) => lines.push(line), cwd: ROOT, env: {} });
+    assert.ok(
+      !lines.some((line) => line.includes(`unknown verb: ${verb}`)),
+      `${verb} is dispatched by the CLI, not just documented`,
+    );
+  }
+});
+
 test('the README does not advertise a verb this milestone has not built', () => {
-  for (const verb of ['approve', 'reject', 'dashboard', '--live']) {
+  // approve and reject moved OUT of this list in M2, because they were built. dashboard is M3
+  // and --live is M4, and both stay here until they exist.
+  for (const verb of ['dashboard', '--live']) {
     assert.ok(
       !README.includes(`bin/signal-desk.mjs ${verb}`),
       `README does not show the unbuilt verb ${verb} as runnable`,
     );
+  }
+});
+
+test('the CLI refuses a verb it has not built, rather than doing something surprising', async () => {
+  const { main } = await import('../src/cli.mjs');
+  for (const verb of ['dashboard', 'send']) {
+    const lines = [];
+    const code = await main({ argv: [verb], out: () => {}, err: (line) => lines.push(line), cwd: ROOT, env: {} });
+    assert.notEqual(code, 0, `${verb} exits non-zero`);
+    assert.ok(lines.some((line) => line.includes(`unknown verb: ${verb}`)));
   }
 });
 
