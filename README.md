@@ -27,12 +27,12 @@ machine as on anyone else's.
 <!-- verified-block: run -->
 ```console
 $ node bin/signal-desk.mjs run
-run run-45f7e6dcb15a
+run run-130ed5b0a32e
 
   1 passed to handoff
   1 awaiting a human
-  4 refused
-  6 signals in total
+  8 refused
+  10 signals in total
 
   lead-29e94419ba7e      handoff   PASS         
   sig-1001               ingest    REFUSE       DUPLICATE_SIGNAL
@@ -40,18 +40,36 @@ run run-45f7e6dcb15a
   lead-845826c4c069      route     REFUSE       BELOW_ROUTING_FLOOR
   lead-e557482af15d      queue     REFUSE       REJECTED_BY_HUMAN
   sig-9001               ingest    REFUSE       MALFORMED_PAYLOAD
+  lead-e321020a996e      gate      REFUSE       PII_IN_BODY
+  lead-6dfbc9615067      gate      REFUSE       RUBRIC_FAILED
+  lead-3a8cab6564a2      gate      REFUSE       UNGROUNDED_PROSE_CLAIM
+  sig-9006               ingest    REFUSE       DUPLICATE_LEAD
 
-  ledger    runs/run-45f7e6dcb15a/ledger.jsonl
-  handoffs  1 dry run artifact(s) in runs/run-45f7e6dcb15a/handoffs
+  ledger    runs/run-130ed5b0a32e/ledger.jsonl
+  handoffs  1 dry run artifact(s) in runs/run-130ed5b0a32e/handoffs
 
   Nothing was sent. This tool never sends mail.
   Inspect a decision with: node bin/signal-desk.mjs explain <lead>
   Act on what is parked with: node bin/signal-desk.mjs queue
 ```
 
-Six signals went in and one came out the far end. That ratio is the point. Four were refused
+Ten signals went in and one came out the far end. That ratio is the point. Eight were refused
 and one is waiting for a person, and every one of those outcomes names the rule that produced
 it.
+
+The corpus ships hostile fixtures on purpose, one per safeguard, so the demo shows the gates
+working rather than asserting that they exist:
+
+| Refusal | What the fixture does |
+|---|---|
+| `MALFORMED_PAYLOAD` | A webhook body with no company domain |
+| `DUPLICATE_SIGNAL` | The same signal id replayed, correctly signed |
+| `DUPLICATE_LEAD` | The same *person* re-signalled under a **new** signal id. The HMAC covers the payload only, so this is validly signed and walks past signal-level idempotency |
+| `BELOW_ROUTING_FLOOR` | A six-person company reading a blog post |
+| `PII_IN_BODY` | A scraped directory page with a phone number in its industry field, interpolated straight into the draft |
+| `UNGROUNDED_PROSE_CLAIM` | An industry string smuggling "now scaling after their Series C" into the body, which no cited source supports |
+| `RUBRIC_FAILED` | A draft every deterministic rule passes, pitched to the wrong reader. No regex catches that, which is what the judge is for |
+| `REJECTED_BY_HUMAN` | A person said no |
 
 ## Inspect a decision
 
@@ -62,7 +80,7 @@ stage stood on.
 ```console
 $ node bin/signal-desk.mjs explain lead-29e94419ba7e
 lead lead-29e94419ba7e
-run  run-45f7e6dcb15a
+run  run-130ed5b0a32e
 
   2026-03-01T09:00:00.000Z  ingest    PASS         system
       evidence  signal:sig-1001
@@ -97,7 +115,7 @@ and the lead parks again as `APPROVAL_STALE`. A refusal reads the same way.
 ```console
 $ node bin/signal-desk.mjs explain sig-9001
 lead sig-9001
-run  run-45f7e6dcb15a
+run  run-130ed5b0a32e
 
   2026-03-01T09:00:31.000Z  ingest    REFUSE       system
       reasons   MALFORMED_PAYLOAD
@@ -116,11 +134,11 @@ makes the same decisions.
 
 <!-- verified-block: replay -->
 ```console
-$ node bin/signal-desk.mjs replay run-45f7e6dcb15a
-hash chain verified across 33 entries
-seal verified: 1 passed, 1 parked, 4 refused, 6 in total
-replay of run-45f7e6dcb15a is an exact match
-33 entries, identical bytes, chain intact
+$ node bin/signal-desk.mjs replay run-130ed5b0a32e
+hash chain verified across 55 entries
+seal verified: 1 passed, 1 parked, 8 refused, 10 in total
+replay of run-130ed5b0a32e is an exact match
+55 entries, identical bytes, chain intact
 ```
 
 If you edit a line in `runs/<run-id>/ledger.jsonl` and run `replay` again, it tells you which

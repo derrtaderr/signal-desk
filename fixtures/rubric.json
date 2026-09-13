@@ -23,6 +23,54 @@
       ]
     }
   },
+  "https://judge.test/rubric/draft-82f02f3485a6f071": {
+    "status": 200,
+    "body": {
+      "draft_hash": "draft-82f02f3485a6f071",
+      "verdict": "FAIL",
+      "criteria": [
+        {
+          "name": "claim_grounding",
+          "verdict": "PASS",
+          "note": "every factual assertion in the body traces to a source fetched this run"
+        },
+        {
+          "name": "audience_fit",
+          "verdict": "FAIL",
+          "note": "the draft pitches a revenue-operations play to a VP Engineering, whose team is not the buyer for it"
+        },
+        {
+          "name": "tone",
+          "verdict": "PASS",
+          "note": "a question rather than a pitch, and no manufactured urgency"
+        }
+      ]
+    }
+  },
+  "https://judge.test/rubric/draft-9c0e45ba6d3dc1ba": {
+    "status": 200,
+    "body": {
+      "draft_hash": "draft-9c0e45ba6d3dc1ba",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "name": "claim_grounding",
+          "verdict": "PASS",
+          "note": "every factual assertion in the body traces to a source fetched this run"
+        },
+        {
+          "name": "audience_fit",
+          "verdict": "PASS",
+          "note": "the message addresses the operator who owns the problem it names"
+        },
+        {
+          "name": "tone",
+          "verdict": "PASS",
+          "note": "a question rather than a pitch, and no manufactured urgency"
+        }
+      ]
+    }
+  },
   "https://judge.test/rubric/draft-b140898e0b7a1fab": {
     "status": 200,
     "body": {
@@ -51,6 +99,30 @@
     "status": 200,
     "body": {
       "draft_hash": "draft-b66622be1a11d3db",
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "name": "claim_grounding",
+          "verdict": "PASS",
+          "note": "every factual assertion in the body traces to a source fetched this run"
+        },
+        {
+          "name": "audience_fit",
+          "verdict": "PASS",
+          "note": "the message addresses the operator who owns the problem it names"
+        },
+        {
+          "name": "tone",
+          "verdict": "PASS",
+          "note": "a question rather than a pitch, and no manufactured urgency"
+        }
+      ]
+    }
+  },
+  "https://judge.test/rubric/draft-df15f329016cd4de": {
+    "status": 200,
+    "body": {
+      "draft_hash": "draft-df15f329016cd4de",
       "verdict": "PASS",
       "criteria": [
         {

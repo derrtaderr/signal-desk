@@ -1,0 +1,21 @@
+{
+  "id": "sig-9003",
+  "source": "rb2b",
+  "received_at": "2026-03-01T08:59:50.000Z",
+  "payload": {
+    "company": {
+      "name": "Vertex Freight",
+      "domain": "vertex.test"
+    },
+    "contact": {
+      "name": "Morgan Hale",
+      "email": "morgan@vertex.test",
+      "title": "VP Operations"
+    },
+    "intent": {
+      "page": "/pricing",
+      "visits": 4
+    }
+  },
+  "signature": "e19d0085efc8f875a6b6e50e49e7e35d91ab85abfa1a1e171e6078fa12c00ac5"
+}

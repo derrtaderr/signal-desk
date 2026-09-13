@@ -20,17 +20,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadFixtures, buildRun, FIXTURES_DIR } from '../src/runner.mjs';
-import { runPipeline } from '../src/kernel.mjs';
-import { ingest } from '../src/stages/ingest.mjs';
-import { enrich } from '../src/stages/enrich.mjs';
-import { score } from '../src/stages/score.mjs';
-import { route } from '../src/stages/route.mjs';
-import { draft } from '../src/stages/draft.mjs';
+import { FIXTURES_DIR } from '../src/runner.mjs';
 import { defaultConfig } from '../src/config.mjs';
-
-// Everything up to, but not including, the gate.
-const UP_TO_DRAFT = [ingest, enrich, score, route, draft];
+import { composeDrafts, serializeFixture } from './draft-corpus.mjs';
 
 // What the recorded judge says about each lead, keyed by the contact it is written to. A lead
 // absent from this table is judged clean. This table is the ONLY place a fixture's rubric
@@ -40,6 +32,19 @@ const JUDGMENTS = {
   'dana@acme.test': { verdict: 'PASS' },
   'sam@northwind.test': { verdict: 'PASS' },
   'robin@globex.test': { verdict: 'PASS' },
+  'morgan@vertex.test': { verdict: 'PASS' },
+  'chris@orbital.test': { verdict: 'PASS' },
+
+  // The rubric-failure fixture. Every deterministic rule passes this draft: it is grounded,
+  // well formed, free of PII and within length. It is simply the wrong message for this reader,
+  // and no regex is going to notice that. This is what the judge is for.
+  'priya@halcyon.test': {
+    verdict: 'FAIL',
+    fails: {
+      audience_fit:
+        'the draft pitches a revenue-operations play to a VP Engineering, whose team is not the buyer for it',
+    },
+  },
 };
 
 const CLEAN_NOTES = {
@@ -58,43 +63,31 @@ function criteriaFor(judgment) {
 }
 
 export async function recordRubric() {
-  const fixtures = loadFixtures();
-  // Build with the real config but the truncated stage list, so drafts are composed exactly as
-  // the full pipeline composes them.
-  const built = buildRun({ fixtures, stages: UP_TO_DRAFT });
-  const report = await runPipeline({
-    stages: UP_TO_DRAFT,
-    signals: built.signals,
-    ctx: built.ctx,
-    ledger: built.ledger,
-  });
-
+  const drafts = await composeDrafts();
   const endpoint = defaultConfig.gate.rubric.endpoint;
   const recordings = {};
 
-  for (const lead of report.leads) {
-    if (lead.final_status !== 'PASS' || lead.output?.draft_hash === undefined) continue;
-
-    const judgment = JUDGMENTS[lead.output.draft.to] ?? { verdict: 'PASS' };
+  for (const draft of drafts) {
+    const judgment = JUDGMENTS[draft.to] ?? { verdict: 'PASS' };
     const criteria = criteriaFor(judgment);
     // The overall line agrees with the criteria rather than being stated independently, so a
     // recording can never be internally inconsistent by accident.
     const verdict = criteria.some((c) => c.verdict === 'FAIL') ? 'FAIL' : judgment.verdict;
 
-    recordings[`${endpoint}/${lead.output.draft_hash}`] = {
+    recordings[`${endpoint}/${draft.draft_hash}`] = {
       status: 200,
-      body: { draft_hash: lead.output.draft_hash, verdict, criteria },
+      body: { draft_hash: draft.draft_hash, verdict, criteria },
     };
   }
 
   return recordings;
 }
 
-// Sorted keys and a trailing newline, so regenerating produces a stable diff.
+// Sorted keys, so regenerating produces a stable diff.
 export function serializeRubric(recordings) {
   const sorted = {};
   for (const key of Object.keys(recordings).sort()) sorted[key] = recordings[key];
-  return `${JSON.stringify(sorted, null, 2)}\n`;
+  return serializeFixture(sorted);
 }
 
 const invokedDirectly = process.argv[1] === fileURLToPath(import.meta.url);

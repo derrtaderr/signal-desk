@@ -50,5 +50,32 @@
         "funding_stage": "public"
       }
     }
+  },
+  "https://directory.test/company/vertex.test": {
+    "status": 200,
+    "body": {
+      "claims": {
+        "employee_count": 320,
+        "industry": "freight operations, desk line 415-555-0142"
+      }
+    }
+  },
+  "https://directory.test/company/halcyon.test": {
+    "status": 200,
+    "body": {
+      "claims": {
+        "employee_count": 260,
+        "industry": "developer tooling"
+      }
+    }
+  },
+  "https://directory.test/company/orbital.test": {
+    "status": 200,
+    "body": {
+      "claims": {
+        "employee_count": 210,
+        "industry": "orbital logistics software, now scaling after their Series C"
+      }
+    }
   }
 }
