@@ -1,13 +1,17 @@
-{
-  "lead-29e94419ba7e": {
-    "decision": "approve",
-    "by": "dana.reviewer",
-    "at": "2026-03-01T08:56:00.000Z"
-  },
-  "lead-e557482af15d": {
+[
+  {
+    "draft_hash": "draft-28a34a58fd2b94a9",
+    "lead_id": "lead-e557482af15d",
     "decision": "reject",
     "by": "dana.reviewer",
     "at": "2026-03-01T08:56:30.000Z",
     "note": "already in an open opportunity, do not touch"
+  },
+  {
+    "draft_hash": "draft-b66622be1a11d3db",
+    "lead_id": "lead-29e94419ba7e",
+    "decision": "approve",
+    "by": "dana.reviewer",
+    "at": "2026-03-01T08:56:00.000Z"
   }
-}
+]
