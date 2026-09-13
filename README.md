@@ -45,7 +45,8 @@ run run-45f7e6dcb15a
   handoffs  1 dry run artifact(s) in runs/run-45f7e6dcb15a/handoffs
 
   Nothing was sent. This tool never sends mail.
-  Inspect a decision with: signal-desk explain <lead>
+  Inspect a decision with: node bin/signal-desk.mjs explain <lead>
+  Act on what is parked with: node bin/signal-desk.mjs queue
 ```
 
 Six signals went in and one came out the far end. That ratio is the point. Four were refused

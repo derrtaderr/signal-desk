@@ -83,7 +83,10 @@ export const queue = {
     };
     const parked = { ...lead, queue: queueState, draft_hash: draftHash };
 
-    const bound = decisions.find((record) => record?.draft_hash === draftHash);
+    // findLast, not find: the decision store is append-only, so a human who changes their mind
+    // leaves both decisions on record and the LATEST one is the one that binds. The superseded
+    // decision stays visible, because the record of what was decided and when is the product.
+    const bound = decisions.findLast((record) => record?.draft_hash === draftHash);
 
     if (bound !== undefined) {
       // Belt and braces. Content keying makes cross-lead reuse structurally unlikely, since two
@@ -145,7 +148,7 @@ export const queue = {
 
     // No decision bound to this draft. Is there one bound to an EARLIER draft for this lead?
     // This is the M1 demo, closed: the human approved something, and this is not that thing.
-    const stale = decisions.find((record) => record?.lead_id === lead.lead_id);
+    const stale = decisions.findLast((record) => record?.lead_id === lead.lead_id);
     if (stale !== undefined) {
       return needsHuman({
         reason: 'APPROVAL_STALE',
