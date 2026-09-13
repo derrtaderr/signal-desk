@@ -103,21 +103,30 @@ run  run-6f98451a03b0
 
 ## Replay a run
 
-`replay` does two separate things, and reports them separately, because a ledger can pass one
-and fail the other. It verifies the hash chain, which proves the file was not edited after it
-was written. Then it re-executes the run from the same inputs and compares the bytes, which
-proves the code still makes the same decisions.
+`replay` does three separate things, and reports them separately, because a ledger can pass one
+and fail another. It verifies the hash chain, which proves the file was not edited after it was
+written. It checks the terminal seal, which proves nothing was removed from the end. Then it
+re-executes the run from the same inputs and compares the bytes, which proves the code still
+makes the same decisions.
 
 <!-- verified-block: replay -->
 ```console
 $ node bin/signal-desk.mjs replay run-6f98451a03b0
-hash chain verified across 32 entries
+hash chain verified across 33 entries
+seal verified: 1 passed, 1 parked, 4 refused, 6 in total
 replay of run-6f98451a03b0 is an exact match
-32 entries, identical bytes, chain intact
+33 entries, identical bytes, chain intact
 ```
 
 If you edit a line in `runs/<run-id>/ledger.jsonl` and run `replay` again, it tells you which
 entry broke and exits non-zero.
+
+The seal is worth its own sentence, because a hash chain proves order and integrity and says
+nothing about completeness. Delete the last few lines of a ledger and the chain still verifies
+perfectly: every remaining entry links to the one before it. So every completed run appends a
+terminal entry carrying the run summary and the head hash, and `replay` refuses a ledger that
+does not end in one. That refusal says the chain was intact and lines were removed, because
+that is a different problem from tampering and leads somewhere different.
 
 ## The eight stages
 

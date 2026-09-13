@@ -115,6 +115,32 @@ export function verifyChain(entries) {
   return { ok: true };
 }
 
+// --- the seal ---------------------------------------------------------------------------
+//
+// A hash chain proves ORDER and INTEGRITY. It does not prove COMPLETENESS. Every entry links
+// to the one before it, so nothing can be edited or reordered undetected, and yet nothing in
+// that construction says whether the last line you are holding is the last line that was
+// written. Truncating a ledger's final entries leaves a chain that verifies perfectly clean.
+//
+// The seal closes that. A completed run appends one terminal entry naming its own outcome, so
+// "this ledger records a finished run" becomes a checkable claim rather than an assumption.
+// Removing any suffix removes the seal, which is precisely what makes truncation visible.
+
+export const SEAL_STAGE = 'seal';
+
+// A lead id no derived lead can collide with, since real ones are `lead-<hex>` or a signal id.
+// It keeps `explain` from ever surfacing the seal as if it were a lead.
+export const SEAL_LEAD_ID = '-';
+
+export function isSealed(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return false;
+  return entries[entries.length - 1].stage === SEAL_STAGE;
+}
+
+export function sealOf(entries) {
+  return isSealed(entries) ? entries[entries.length - 1] : undefined;
+}
+
 export function parseLedger(text) {
   if (text.trim() === '') return [];
   return text
