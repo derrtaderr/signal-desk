@@ -116,3 +116,58 @@ test('verification reports what it found, so a refusal can name it', () => {
 test('verification is deterministic', () => {
   assert.deepEqual(assertClean('reach ops@internal'), assertClean('reach ops@internal'));
 });
+
+// --- the character-set boundary, tested rather than assumed -----------------------------
+//
+// Both detectors are built from ASCII character classes, so anything that LOOKS like an
+// address or a number to a human while not being ASCII slips past. Probed before writing this:
+// a fullwidth ＠ and fullwidth digits passed redaction AND verification, silently.
+//
+// Compatibility forms are closed below by normalising before detection. Homoglyphs are NOT,
+// and that boundary is documented in src/redaction.mjs rather than left for someone to discover.
+
+test('a fullwidth at-sign is still an address', () => {
+  const { hits } = redact('forward to ops＠leak.test please', { allow: [] });
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].type, 'email');
+});
+
+test('fullwidth digits are still a phone number', () => {
+  const text = 'call ４１５-５５５-０１４２ if you must';
+  const { hits } = redact(text, { allow: [] });
+  assert.deepEqual(hits.map((h) => h.type), ['phone']);
+});
+
+test('the verifier normalises too, so a compatibility form cannot slip past it either', () => {
+  assert.equal(assertClean('reach ops＠internal').clean, false);
+  assert.equal(assertClean('call ４１５５５５０１４２').clean, false);
+});
+
+test('normalisation does not change what a clean body reports', () => {
+  const text = 'Hi Dana,\n\nAt around 240 people, who owns the handoff?';
+  const { hits } = redact(text, { allow: [] });
+  assert.deepEqual(hits, []);
+  assert.equal(assertClean(text).clean, true);
+});
+
+test('a recipient written in a compatibility form is still recognised as the recipient', () => {
+  const { hits } = redact('writing to dana＠acme.test about your visit', { allow: ['dana@acme.test'] });
+  assert.deepEqual(hits, [], 'the allow list survives normalisation');
+});
+
+test('KNOWN BOUNDARY: a homoglyph ADJACENT to the @ defeats both detectors', () => {
+  // Asserted rather than hidden, the same way the M1 gap was. Closing this needs a confusables
+  // table, which is different work from normalisation and is not in this milestone. If someone
+  // closes it later, this test fails and tells them to delete it.
+  //
+  // The boundary is narrower than it first looks, and the narrowness is the useful part. A
+  // homoglyph in the MIDDLE of a local part changes nothing, because the ASCII run either side
+  // of it still matches: "аbc@one.test" is caught on "bc@one.test". Only a non-ASCII character
+  // sitting immediately against the @ breaks the pattern.
+  const caught = 'mail аbc@one.test';      // Cyrillic а, but ASCII "bc" still abuts the @
+  assert.equal(redact(caught, { allow: [] }).hits.length, 1, 'still caught');
+
+  const missed = 'mail aа@one.test';       // Cyrillic а sits directly against the @
+  assert.deepEqual(redact(missed, { allow: [] }).hits, [], 'redaction does not catch it');
+  assert.equal(assertClean(missed).clean, true, 'and neither does verification');
+});
