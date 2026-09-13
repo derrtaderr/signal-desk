@@ -167,6 +167,47 @@ terminal entry carrying the run summary and the head hash, and `replay` refuses 
 does not end in one. That refusal says the chain was intact and lines were removed, because
 that is a different problem from tampering and leads somewhere different.
 
+## See the whole run at once
+
+`dashboard` renders any run's ledger as one HTML file and writes it beside that ledger. No run
+id means the latest run.
+
+<!-- verified-block: dashboard -->
+```console
+$ node bin/signal-desk.mjs dashboard
+dashboard run-cc483f9d8434
+
+  83 ledger entries across 14 lead(s)
+  1 passed, 1 parked, 12 refused
+  12 distinct refusal reason(s), 2 human decision(s)
+
+  runs/run-cc483f9d8434/dashboard.html
+
+  Open it in a browser. It is one file, works offline, and fetches nothing.
+  It is a read-only view. Decisions are still made with: node bin/signal-desk.mjs approve <id>
+```
+
+Open it in a browser. It is a single file with no dependencies, no external stylesheet, no
+webfont and no JavaScript at all, so it renders identically with the network off. It shows the
+funnel stage by stage, every refusal grouped by reason code, which part of the gate produced
+each one, the human decisions with the draft hashes they bound to, and every lead's full trail.
+
+Two properties are worth stating because they are enforced rather than intended.
+
+**It is a pure function of the ledger and nothing else.** If a view is not derivable from the
+ledger, the ledger does not record it and the fix belongs in the stage that should have written
+it down. That is why the queue stage records `by` and `at` as fields rather than leaving a
+renderer to parse them out of a sentence.
+
+**It is read-only, and it does not pretend otherwise.** There is no approve control and no
+disabled-looking one either, because a button that advertises a capability at the wrong surface
+invites somebody to wire it up. Decisions are made at the command line. The page says so.
+
+It also escapes every string it takes from the ledger, and that is not a formality here: the
+prompt-injection fixture's payload is quoted into the ledger on purpose, so this page renders
+attacker-controlled markup by design. A test renders the hostile run and asserts, in both
+directions, that the payload is present and inert.
+
 ## The eight stages
 
 The pipeline is an ordered list of stages in `src/config.mjs`. Order is the pipeline; nothing

@@ -1,11 +1,9 @@
-// The CLI. Six verbs: run, queue, approve, reject, explain, replay.
+// The CLI. Seven verbs: run, queue, approve, reject, explain, replay, dashboard.
 //
 // This is where bytes reach disk. Stages do no I/O and the kernel writes only to an
 // in-memory ledger, so putting every write in one place keeps the rest of the system
 // testable with plain objects.
 //
-// The M3 verb (dashboard) is deliberately absent rather than stubbed, because a verb that
-// exists and does nothing is worse than one that does not exist.
 //
 // THE APPROVAL LOOP, which is the shape of the whole tool:
 //
@@ -29,6 +27,7 @@ import {
 import { runPipeline } from './kernel.mjs';
 import { parseLedger, verifyChain, isSealed, sealOf } from './ledger.mjs';
 import { adapters } from './adapters.mjs';
+import { buildDashboardView, renderDashboard } from './dashboard.mjs';
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -42,6 +41,7 @@ Usage:
   node bin/signal-desk.mjs reject <id>    Reject a parked draft, with an optional --note
   node bin/signal-desk.mjs explain <lead> Print the full decision trail for one lead
   node bin/signal-desk.mjs replay <run>   Re-execute a run and verify its ledger still matches
+  node bin/signal-desk.mjs dashboard     Render a run's ledger as one self-contained HTML file
 
 There is no install step, so the invocation is spelled out in full. A bare signal-desk is
 not on PATH in a fresh clone.
@@ -477,6 +477,75 @@ async function verbReplay({ args, out, err, env, cwd }) {
   return 0;
 }
 
+// --- dashboard ---------------------------------------------------------------------------
+//
+// One self-contained HTML file over one run's ledger, written into that run's own directory.
+//
+// It is READ-ONLY, per DESIGN.md's non-scope: approvals happen in the CLI only, and the page
+// does not carry a control that could mutate one or a control that looks like it might. The
+// renderer is a pure function in src/dashboard.mjs and this is the only thing here that writes.
+
+export const DASHBOARD_FILE = 'dashboard.html';
+
+async function verbDashboard({ args, out, err, env, cwd }) {
+  const base = runsDir(env, cwd);
+  const runId = args[0] ?? latestRunId(base);
+
+  if (runId === null || runId === undefined) {
+    err('no runs found. Run `node bin/signal-desk.mjs run` first.');
+    return 2;
+  }
+
+  const ledgerPath = join(base, runId, 'ledger.jsonl');
+  if (!existsSync(ledgerPath)) {
+    err(`run ${runId} not found at ${ledgerPath}`);
+    return 2;
+  }
+
+  const entries = parseLedger(readFileSync(ledgerPath, 'utf8'));
+  if (entries.length === 0) {
+    err(`run ${runId} has an empty ledger, so there is nothing to draw`);
+    return 1;
+  }
+
+  // The chain is checked BEFORE anything is rendered, and nothing is written when it fails.
+  // A confident dashboard over a record that was edited after it was written is the false-clean
+  // reading this whole repo exists to prevent, and it would be worse than the raw file because
+  // it looks authoritative. `replay` makes the same check for the same reason.
+  const chain = verifyChain(entries);
+  if (!chain.ok) {
+    err(`hash chain broken: ${chain.reason}`);
+    err('the ledger was tampered with after it was written, so no picture of it can be trusted');
+    err('nothing was written');
+    return 1;
+  }
+
+  const view = buildDashboardView(entries);
+  const path = join(base, runId, DASHBOARD_FILE);
+  writeFileSync(path, renderDashboard(view));
+
+  const show = (target) => relative(cwd, target) || target;
+
+  out(`dashboard ${runId}`);
+  out('');
+  out(`  ${view.entry_count} ledger entries across ${view.leads.length} lead(s)`);
+  if (view.seal !== null) {
+    out(
+      `  ${view.seal.summary.PASS} passed, ${view.seal.summary.NEEDS_HUMAN} parked, ` +
+        `${view.seal.summary.REFUSE} refused`,
+    );
+  } else {
+    out('  no terminal seal: this is not a record of a completed run');
+  }
+  out(`  ${view.refusals.length} distinct refusal reason(s), ${view.decisions.length} human decision(s)`);
+  out('');
+  out(`  ${show(path)}`);
+  out('');
+  out('  Open it in a browser. It is one file, works offline, and fetches nothing.');
+  out('  It is a read-only view. Decisions are still made with: node bin/signal-desk.mjs approve <id>');
+  return 0;
+}
+
 // --- dispatch --------------------------------------------------------------------------
 
 export async function main({
@@ -506,6 +575,8 @@ export async function main({
       return verbExplain(context);
     case 'replay':
       return verbReplay(context);
+    case 'dashboard':
+      return verbDashboard(context);
     case undefined:
     case '--help':
     case '-h':

@@ -301,3 +301,155 @@ test('an export refuses to overwrite a DIFFERENT artifact at the same path', () 
     );
   });
 });
+
+// --- dashboard ---------------------------------------------------------------------------
+//
+// Proved as a SUBPROCESS wherever the behaviour only exists across a whole invocation. Both
+// prior lanes' blockers lived in import-time and multi-invocation state, and a test that calls
+// main() in-process shares a module registry with everything else in the file.
+//
+// The environment is bare: PATH and HOME only. That is the keyless proof applied to this verb
+// as well, so rendering a page cannot quietly acquire a credential.
+
+const inTempDir = withTempRuns;
+
+function bareEnv(dir) {
+  return { PATH: process.env.PATH, HOME: dir, SIGNAL_DESK_RUNS_DIR: join(dir, 'runs') };
+}
+
+function runCliRaw(dir, args) {
+  try {
+    const stdout = execFileSync(process.execPath, [BIN, ...args], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: bareEnv(dir),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { status: 0, stdout, stderr: '' };
+  } catch (error) {
+    return { status: error.status ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
+  }
+}
+
+function runCli(dir, args) {
+  const { status, stdout, stderr } = runCliRaw(dir, args);
+  assert.equal(status, 0, `${args.join(' ')} exited ${status}:\n${stderr}`);
+  return stdout;
+}
+
+test('dashboard writes a self-contained HTML file into the run directory and prints its path', () => {
+  inTempDir((dir) => {
+    runCli(dir, ['run']);
+    const out = runCli(dir, ['dashboard']);
+
+    const match = /runs\/(run-[0-9a-f]{12})\/dashboard\.html/.exec(out);
+    assert.ok(match, `the printed output names the file it wrote:\n${out}`);
+
+    const written = join(dir, 'runs', match[1], 'dashboard.html');
+    assert.ok(existsSync(written), 'and the file is really there');
+    const html = readFileSync(written, 'utf8');
+    assert.match(html, /^<!doctype html>/i);
+    assert.ok(html.includes(match[1]), 'the page names the run it describes');
+  });
+});
+
+test('dashboard defaults to the latest run, the same pointer queue and explain read', () => {
+  inTempDir((dir) => {
+    const first = /run (run-[0-9a-f]{12})/.exec(runCli(dir, ['run']))[1];
+    const out = runCli(dir, ['dashboard']);
+    assert.ok(out.includes(first), 'with one run, the latest run is that run');
+  });
+});
+
+test('dashboard renders a named run when given one', () => {
+  inTempDir((dir) => {
+    const runId = /run (run-[0-9a-f]{12})/.exec(runCli(dir, ['run']))[1];
+    const out = runCli(dir, ['dashboard', runId]);
+    assert.ok(out.includes(runId));
+    assert.ok(existsSync(join(dir, 'runs', runId, 'dashboard.html')));
+  });
+});
+
+test('dashboard on an unknown run names the path it looked for', () => {
+  inTempDir((dir) => {
+    runCli(dir, ['run']);
+    const { status, stderr } = runCliRaw(dir, ['dashboard', 'run-000000000000']);
+    assert.notEqual(status, 0);
+    assert.match(stderr, /run-000000000000/);
+    assert.match(stderr, /ledger\.jsonl/);
+  });
+});
+
+test('dashboard before any run says so, with the same message every other verb uses', () => {
+  inTempDir((dir) => {
+    const { status, stderr } = runCliRaw(dir, ['dashboard']);
+    assert.notEqual(status, 0);
+    assert.match(stderr, /no runs found/);
+  });
+});
+
+test('dashboard refuses to draw a picture of a ledger whose chain is broken', () => {
+  // A confident dashboard over an untrustworthy record is the false-clean reading this whole
+  // repo exists to prevent. `replay` checks the chain before it reports anything; so does this.
+  inTempDir((dir) => {
+    const runId = /run (run-[0-9a-f]{12})/.exec(runCli(dir, ['run']))[1];
+    const ledgerPath = join(dir, 'runs', runId, 'ledger.jsonl');
+    const lines = readFileSync(ledgerPath, 'utf8').trimEnd().split('\n');
+    // Change who a decision is attributed to, which is the edit the chain exists to catch and
+    // is guaranteed to alter the payload of whichever line it lands on.
+    const target = lines.findIndex((line) => line.includes('"actor":"system"'));
+    assert.notEqual(target, -1, 'the ledger has a system entry to tamper with');
+    lines[target] = lines[target].replace('"actor":"system"', '"actor":"human"');
+    writeFileSync(ledgerPath, `${lines.join('\n')}\n`);
+
+    const { status, stderr } = runCliRaw(dir, ['dashboard', runId]);
+    assert.notEqual(status, 0);
+    assert.match(stderr, /chain/i);
+    assert.ok(!existsSync(join(dir, 'runs', runId, 'dashboard.html')), 'and nothing was written');
+  });
+});
+
+test('the dashboard a real run produces carries the injection payload escaped, end to end', () => {
+  // The in-process test asserts the renderer escapes. This asserts the BYTES ON DISK do, which
+  // is the artifact a stranger actually opens.
+  inTempDir((dir) => {
+    const runId = /run (run-[0-9a-f]{12})/.exec(runCli(dir, ['run']))[1];
+    runCli(dir, ['dashboard']);
+    const html = readFileSync(join(dir, 'runs', runId, 'dashboard.html'), 'utf8');
+    assert.ok(!html.includes('<script>'), 'no raw script tag in the file on disk');
+    assert.ok(html.includes('&lt;script&gt;'), 'and the payload is present, escaped');
+  });
+});
+
+test('the dashboard file needs no network: it references no external address in markup', () => {
+  inTempDir((dir) => {
+    const runId = /run (run-[0-9a-f]{12})/.exec(runCli(dir, ['run']))[1];
+    runCli(dir, ['dashboard']);
+    const html = readFileSync(join(dir, 'runs', runId, 'dashboard.html'), 'utf8');
+    for (const tag of [...html.matchAll(/<\/?[a-z][a-z0-9]*\b([^>]*)>/gi)].map((m) => m[1])) {
+      assert.doesNotMatch(tag, /\bsrc\s*=/i);
+      assert.doesNotMatch(tag, /\bhref\s*=\s*"(?!#)/i);
+    }
+  });
+});
+
+test('dashboard writes nothing but the dashboard, and never touches the ledger', () => {
+  inTempDir((dir) => {
+    const runId = /run (run-[0-9a-f]{12})/.exec(runCli(dir, ['run']))[1];
+    const ledgerPath = join(dir, 'runs', runId, 'ledger.jsonl');
+    const before = readFileSync(ledgerPath, 'utf8');
+    runCli(dir, ['dashboard']);
+    assert.equal(readFileSync(ledgerPath, 'utf8'), before, 'the ledger is untouched');
+  });
+});
+
+test('dashboard records no decision, so a page cannot become an approval', () => {
+  inTempDir((dir) => {
+    runCli(dir, ['run']);
+    runCli(dir, ['dashboard']);
+    assert.ok(
+      !existsSync(join(dir, 'runs', 'approvals.jsonl')),
+      'rendering a view of parked drafts approves none of them',
+    );
+  });
+});
