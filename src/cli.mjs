@@ -19,7 +19,13 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { executeFixtureRun, buildRun, loadFixtures } from './runner.mjs';
-import { loadDecisions, loadDecisionEntries, appendDecision, decisionsPath } from './decisions.mjs';
+import {
+  loadDecisions,
+  loadDecisionEntries,
+  appendDecision,
+  decisionsPath,
+  decisionFor,
+} from './decisions.mjs';
 import { runPipeline } from './kernel.mjs';
 import { parseLedger, verifyChain, isSealed, sealOf } from './ledger.mjs';
 import { adapters } from './adapters.mjs';
@@ -302,6 +308,23 @@ async function verbDecide(decision, { args, out, err, env, cwd, now }) {
   }
 
   const { draft } = resolved;
+
+  // Deciding the same way twice is not an error and not news. Say so, record nothing, and exit
+  // zero. Appending a duplicate would grow the store with lines that change nothing and make
+  // the history harder to read, which is the opposite of what the store is for.
+  //
+  // A DIFFERENT decision is a different thing to say, so it is recorded and the latest binds.
+  const standing = decisionFor(loadDecisionEntries(runsDir(env, cwd)), draft.draft_hash);
+  if (standing !== undefined && standing.decision === decision) {
+    out(`${draft.draft_hash} was already ${decision === 'approve' ? 'approved' : 'rejected'}`);
+    out('');
+    out(`  by       ${standing.by}`);
+    out(`  at       ${standing.at}`);
+    out('');
+    out('  Nothing recorded; that decision already stands for this exact draft.');
+    return 0;
+  }
+
   let written;
   try {
     written = appendDecision(runsDir(env, cwd), {

@@ -384,3 +384,53 @@ test('the pre-approval run no longer replays once a decision has been recorded',
     assert.match(output, /inputs or the wiring have changed/);
   });
 });
+
+// --- deciding twice -----------------------------------------------------------------------
+
+test('approving an already-approved draft says so instead of silently repeating', () => {
+  inWorkspace((dir) => {
+    cli(['run'], dir);
+    const hash = parkedHash(cli(['queue'], dir));
+    cli(['approve', hash, '--by', 'dana.reviewer'], dir);
+
+    const second = cli(['approve', hash, '--by', 'someone.else'], dir);
+    assert.match(second, /already approved/i);
+    assert.match(second, /dana\.reviewer/, 'and names who decided it first');
+  });
+});
+
+test('a repeated decision is not appended, so the store does not fill with duplicates', () => {
+  inWorkspace((dir) => {
+    cli(['run'], dir);
+    const hash = parkedHash(cli(['queue'], dir));
+    cli(['approve', hash], dir);
+    cli(['approve', hash], dir);
+    cli(['approve', hash], dir);
+
+    const lines = readFileSync(join(dir, 'runs', 'approvals.jsonl'), 'utf8').trimEnd().split('\n');
+    assert.equal(lines.length, 1, 'one decision, recorded once');
+  });
+});
+
+test('changing the decision IS recorded, because that is a different thing to say', () => {
+  inWorkspace((dir) => {
+    cli(['run'], dir);
+    const hash = parkedHash(cli(['queue'], dir));
+    cli(['approve', hash], dir);
+    const changed = cli(['reject', hash, '--note', 'looked again'], dir);
+
+    assert.doesNotMatch(changed, /already/i);
+    const lines = readFileSync(join(dir, 'runs', 'approvals.jsonl'), 'utf8').trimEnd().split('\n');
+    assert.equal(lines.length, 2, 'both decisions stay on record');
+    assert.match(cli(['run'], dir), /REJECTED_BY_HUMAN/, 'and the latest one binds');
+  });
+});
+
+test('a repeated decision still exits zero, since nothing is wrong', () => {
+  inWorkspace((dir) => {
+    cli(['run'], dir);
+    const hash = parkedHash(cli(['queue'], dir));
+    cli(['approve', hash], dir);
+    cli(['approve', hash], dir);
+  });
+});
