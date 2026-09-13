@@ -597,3 +597,123 @@ test('a confirmation says how many fields it compared, so CONFIRMED is not taken
   assert.match(detailOf(oneField), /\b1 of 3\b/);
   assert.match(detailOf(all), /\b3 of 3\b/);
 });
+
+// --- self-asserted freshness ---------------------------------------------------------------
+//
+// M4 spec item 2. `as_of` is an ASSERTION BY THE SOURCE, not a verification by this pipeline.
+// In fixture mode it is a value this repo committed. In live mode it is whatever the source
+// says, and until M4 the pipeline believed it unconditionally, including when the source claimed
+// a record from next year.
+//
+// A source cannot have observed something that has not happened. A future as_of is a broken
+// clock or an attempt to sit permanently inside the freshness window, and either way the
+// record's real age is unknowable — the same state as undated, which has been unusable since M3.
+
+test('a source claiming a record from the future is REFUSED, not believed', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({
+      [DIRECTORY]: {
+        status: 200,
+        body: { as_of: '2027-01-01T00:00:00.000Z', claims: { employee_count: 240 } },
+      },
+      [NEWSROOM]: { status: 404, body: {} },
+    }),
+  );
+  assert.equal(result.status, 'REFUSE');
+  const flag = result.entries.find((e) => e.reason_codes?.includes('EVIDENCE_FUTURE_DATED'));
+  assert.ok(flag, 'the future-dated record is named in the trail with its own code');
+  assert.match(flag.detail, /2027-01-01/);
+});
+
+test('a future-dated claim never reaches the output, so nothing downstream can state it', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx({
+      [DIRECTORY]: {
+        status: 200,
+        body: { as_of: '2027-01-01T00:00:00.000Z', claims: { employee_count: 999 } },
+      },
+      [NEWSROOM]: recordings[NEWSROOM],
+    }),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.ok(!result.output.claims.some((c) => c.field === 'employee_count' && c.cited));
+  assert.ok(!result.output.citations.includes(DIRECTORY));
+});
+
+test('a record a minute ahead of the run clock is usable, because an honest clock can run fast', async () => {
+  // The tolerance is the difference between catching a lie and punishing a rounding error.
+  const result = await enrich.run(
+    lead(),
+    makeCtx({
+      [DIRECTORY]: {
+        status: 200,
+        body: { as_of: '2026-03-01T09:01:00.000Z', claims: { employee_count: 240 } },
+      },
+      [NEWSROOM]: { status: 404, body: {} },
+    }),
+  );
+  assert.equal(result.status, 'PASS');
+  assert.ok(result.output.citations.includes(DIRECTORY));
+});
+
+test('the skew tolerance is a configured number, so widening it is a decision somebody makes', async () => {
+  const aheadByAnHour = {
+    [DIRECTORY]: {
+      status: 200,
+      body: { as_of: '2026-03-01T10:00:00.000Z', claims: { employee_count: 240 } },
+    },
+    [NEWSROOM]: { status: 404, body: {} },
+  };
+  const refused = await enrich.run(lead(), makeCtx(aheadByAnHour));
+  assert.equal(refused.status, 'REFUSE');
+
+  const tolerated = await enrich.run(
+    lead(),
+    makeCtx(aheadByAnHour, { clockSkewToleranceMs: 2 * 60 * 60 * 1000 }),
+  );
+  assert.equal(tolerated.status, 'PASS');
+});
+
+test('a future-dated identity record is UNVERIFIED, because it cannot contradict anything either', async () => {
+  const result = await enrich.run(
+    lead(),
+    makeCtx(
+      {
+        ...recordings,
+        [PERSON]: {
+          status: 200,
+          body: {
+            as_of: '2027-01-01T00:00:00.000Z',
+            identity: { name: 'Someone Else', email: 'other@elsewhere.test', company_domain: 'elsewhere.test' },
+          },
+        },
+      },
+      withIdentity,
+    ),
+  );
+  assert.equal(result.status, 'PASS', 'a record of unknowable age contradicts nothing');
+  assert.ok(result.entries.some((e) => e.reason_codes?.includes('IDENTITY_UNVERIFIED')));
+  assert.ok(!result.entries.some((e) => e.reason_codes?.includes('IDENTITY_CONFIRMED')));
+});
+
+test('a live response records when THIS RUN fetched it, beside what the source asserts', async () => {
+  // The constructive half of the freshness posture. fetched_at is ours and is verified by
+  // construction. as_of is theirs and is asserted. A reader deserves to know which half of the
+  // date this system stands behind, so the trail carries both and says which is which.
+  const ctx = createContext({
+    ledger: new Ledger(),
+    clock: fixtureClock({ start: '2026-03-01T09:00:00.000Z', stepMs: 1000 }),
+    fetch: async (url) => ({
+      ...recordings[url],
+      fetched_at: '2026-03-01T09:00:00.500Z',
+    }),
+    config: { mode: 'live', enrich: { sources: ['https://directory.test/company/{domain}'] } },
+    run_id: 'run-test',
+  });
+  const result = await enrich.run(lead(), ctx);
+  assert.equal(result.status, 'PASS');
+  assert.match(result.detail ?? '', /2026-03-01T09:00:00\.500Z/);
+  assert.match(result.detail ?? '', /assert/i);
+});
