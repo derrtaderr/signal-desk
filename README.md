@@ -224,10 +224,9 @@ else defines it.
 | 7 | queue | Everything parks for a human by default. An approval binds to the draft's content hash, never to the lead. This is the send boundary |
 | 8 | handoff | Renders an artifact through a documented adapter contract. Only approved draft hashes are exportable, and an export cannot overwrite a different one. Never sends |
 
-## The three-part gate
+## The gate
 
-Stage 6 is where most of the refusing happens, and it is three separate disciplines rather than
-one list of rules.
+Stage 6 refuses on four separate disciplines rather than one list of rules.
 
 **Fail-closed PII redaction.** Not one regex pass that reports what it matched, because that
 cannot tell "there was no PII" apart from "my pattern did not match". Redaction and verification
@@ -249,6 +248,48 @@ structured reference the gate can verify. A sentence asserting a funding round l
 which is how that used to get through. The prose check is typed: a funding claim grounds only
 against a cited `funding_stage`, a headcount only against a cited `employee_count`. Typing is
 what makes it correct rather than merely strict, and it is what lets a *contradiction* refuse.
+
+**Prompt injection, new in M3.** A scraped page can carry text addressed to the system rather
+than to the reader, and markup has no business in a message these templates compose as plain
+prose. Both refuse, and the refusal quotes what it saw, because an operator cannot decide whether
+to drop a source from their config on the strength of "something tried to instruct your system".
+
+Worth being precise about what that rule does and does not buy, because the marketing version is
+bigger than the honest one. In fixture mode the draft stage is a mechanical template fill, so an
+instruction smuggled into a source has nothing to instruct: there is no interpreter in the loop.
+This pipeline is not immune because it defends well. It is immune because there is no model in
+the drafting path yet, and M4 ends that. What the rule does today is make the payload **visible** —
+flagged by enrich where it entered, refused by the gate where it landed — and that is the part
+that survives M4.
+
+## What enrichment refuses
+
+Three of M3's four hostile catches land at stage 2, and the unevenness is the point rather than
+an accident. Most bad outreach is stopped by knowing something is wrong with the evidence, not by
+catching a bad sentence after writing one.
+
+**The signal names a person; the evidence names someone else.** Vendor-side identity resolution
+is probabilistic, so a signal can be correctly attributed to a company and wrongly attributed to
+a human. A person-level source is checked first, before any claim source, and a record that
+disagrees stops the lead there. No draft is composed, because a message to the wrong person is
+not made safer by being written first and refused later.
+
+A record that is missing, unreachable or expired is reported as `IDENTITY_UNVERIFIED` and the
+lead proceeds. That is not a fail-open. It is the state every lead was in before this rule
+existed, and refusing it would be a new product policy rather than a safeguard. What matters is
+that absence never reads as confirmation, and the ledger says so out loud.
+
+**A 200 is not freshness.** Every claim response carries an `as_of`, compared against the run's
+own clock. A record outside the freshness window is dropped and named. So is a record that
+carries no `as_of` at all, and that is the load-bearing half: a response with no date cannot tell
+"fetched fresh" apart from "read out of a cache in 2019", and trusting it would put the whole
+rule at the mercy of a source that declines to date itself.
+
+**No source knows this company.** Every source comes back empty and nothing is invented to fill
+the hole. The refusal says what the run observed, which is that no citable claim exists. It does
+not say the company is fake, because nothing here can tell that apart from every source being
+down, and asserting it would be exactly the confident unsupported claim the safeguard exists to
+refuse.
 
 ## The approval queue
 
@@ -325,13 +366,23 @@ hosted, and there is no telemetry and no account.
 M1 built the kernel, the stage contract, the hash-chained ledger, all eight stages end to end in
 fixture mode, and `run`, `explain` and `replay`.
 
-M2 is the depth: the three-part gate, the approval queue and its `queue`, `approve` and `reject`
-verbs, the adapter contract with a second conforming adapter, and a terminal seal that makes a
-truncated ledger detectable. It also decided the identity model M1 left unowned, which is why a
-second signal for one person is now refused rather than doubling the motion.
+M2 was the depth: the three-part gate, the approval queue and its `queue`, `approve` and
+`reject` verbs, the adapter contract with a second conforming adapter, and a terminal seal that
+makes a truncated ledger detectable. It also decided the identity model M1 left unowned, which
+is why a second signal for one person is refused rather than doubling the motion.
 
-Deliberately not here yet. The HTML dashboard and the rest of the hostile fixture suite are M3.
-Live mode and real keys are M4. Sending is non-scope in every milestone.
+M3 is the surface and the suite. The `dashboard` verb and its self-contained HTML page. The four
+hostile fixtures the design still owed: a wrong-person match, a decayed record, a prompt
+injection in a scraped page, and a company that does not exist. The mechanisms three of them
+needed, in the stage that owns each. And a test that checks the design's hostile list against
+the reason codes the demo actually produces, so the list cannot quietly stop being complete.
+
+One of those four needed no new rule at all. The hallucination-bait lead is caught by a
+discipline M1 built and no fixture had ever reached, and finding that out was worth more than
+another gate would have been.
+
+Deliberately not here. Live mode and real keys are M4. Sending is non-scope in every milestone,
+and approving from the dashboard is non-scope permanently rather than pending.
 
 The M1 limitation that a test used to pin is closed, and the test was flipped rather than
 deleted. See `test/adversarial.test.mjs`.
@@ -366,10 +417,11 @@ $ node scripts/make-fixtures.mjs
 
 ## Design
 
-`docs/DESIGN.md` is the approved design. `docs/M2-SPEC.md` is what this milestone built,
-including its design decisions, its divergences, and an addendum recording what the
-implementation taught and which limitations are deferred rather than solved.
-`docs/M1-SPEC.md` is the previous milestone. `docs/ADAPTERS.md` is the sender adapter contract.
+`docs/DESIGN.md` is the approved design. `docs/M3-SPEC.md` is what this milestone built,
+including the stage-ownership argument for each hostile catch, the dashboard's contract and its
+escaping rule, and the divergences. `docs/M2-SPEC.md` and `docs/M1-SPEC.md` are the previous
+milestones, each carrying its own addendum on what the implementation taught.
+`docs/ADAPTERS.md` is the sender adapter contract.
 
 ### Known boundaries
 
@@ -385,5 +437,14 @@ somebody closes it.
   are folded and caught. A homoglyph sitting directly against an `@` is not; that needs a
   Unicode confusables table.
 - **Approvals do not expire.** A decision binds to a draft hash forever. Nothing re-asks after a
-  week, and a draft that still hashes the same is still authorised.
+  week, and a draft that still hashes the same is still authorised. As of M3 this is pinned by a
+  tripwire test rather than merely written down here, because until then adding an expiry window
+  would have failed nothing.
+- **Identity evidence is checked when it exists, and its absence is not a refusal.** A source
+  that cannot answer leaves the lead `IDENTITY_UNVERIFIED`, and the pipeline will still write to
+  a person no source confirmed. Absence never reads as confirmation, which is the property that
+  matters, but an unverified identity is not a verified one.
+- **The injection rule makes a payload visible; it is not what stops it working.** Nothing is
+  stopping it working today, because fixture-mode drafting is a template fill with no model in
+  it. That changes in M4, and this boundary is the one to press on when reviewing it.
 - **Deduplication is per run.** A lead processed on Monday can be processed again on Friday.

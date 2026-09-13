@@ -448,3 +448,80 @@ prints its path; opening that file from `file://` with no network shows the funn
 breakdown, the gate stats, the human decisions with their draft hashes, and every lead's trail.
 The XSS test passes against the injection fixture in both directions. The approval non-expiry
 deferral has a tripwire, and the report shows it tripping.
+
+---
+
+## Implementation addendum, written after the lane ran
+
+The spec above was committed first, before any code, and nothing in it has been edited since. A
+spec quietly rewritten to match what got built is not a spec. This section records what the
+implementation taught.
+
+### Things the spec did not anticipate
+
+1. **The identity source could not be one of `enrich.sources`, and the reason was the decay
+   rule.** The spec described a contact-scoped source without saying where it sat in the config.
+   Putting it in the existing `sources` list would have made it contribute a citation, and then
+   the decayed-evidence fixture would have ended enrich with one usable citation, zero usable
+   claims, and a PASS — refusing later at the draft stage for a missing claim rather than at
+   enrich for a stale one. It gets its own config key, `identitySource`, and never becomes a
+   citation. A test pins that directly, because the property is invisible until a second rule
+   depends on it.
+
+2. **`NO_CITED_CLAIMS` had to survive alongside `EVIDENCE_DECAYED`, and the split is what made
+   the hallucination-bait fixture possible.** The spec argued the split on the DUPLICATE_SIGNAL
+   versus DUPLICATE_LEAD precedent and treated it as a reporting nicety. It is not. Without the
+   split, the decayed fixture and the hallucination-bait fixture would have produced the same
+   code, and the fourth catch would have been indistinguishable from the second.
+
+3. **The injection detector needed a `markup` kind, which the spec's table has but the reasoning
+   did not fully earn.** The spec justified it as "these templates compose plain prose". True,
+   and the sharper reason emerged while writing the dashboard: the markup kind is what puts a
+   real payload in the ledger. An instruction-only detector would have quoted `"Ignore previous
+   instructions"` and nothing else, and then the dashboard's XSS test would have had no live
+   markup to assert against and would have been theatre. The two decisions are coupled more
+   tightly than the spec realised.
+
+4. **The dashboard's raw-ledger block needed the canonical serialiser.** Written with
+   `JSON.stringify`, it showed a DIFFERENT rendering of the same entries than the file on disk.
+   Nobody would have been misled by it in this run, and it still violated the module's own
+   contract: a second account of the record is the one thing it must never be. Caught by the test
+   asserting `view.raw === ledger.toJSONL()`, which was written because the contract said so
+   rather than because anybody suspected the bug.
+
+5. **A NUL byte landed inside a template literal used as a Map key.** `test/repo-hygiene.test.mjs`
+   caught it in the same run it was introduced. That test exists because the identical bug cost
+   an hour in M1, inside a hash separator in `src/stages/ingest.mjs`. The fix removed the
+   separator entirely rather than retyping it: the lookup is a nested Map now, so there is
+   nothing to get wrong a second time.
+
+### Things the spec got right and the implementation confirmed
+
+- Running identity FIRST paid for itself immediately. The wrong-person lead's whole trail is two
+  entries, and a test asserts the claim sources were never fetched.
+- Requiring `as_of` on every recording was the correct call and cost almost nothing: nine
+  existing recordings gained a date, and the rule now has no silent default to argue about.
+- Flagging the injection at enrich rather than dropping or refusing there produced exactly the
+  trail the design asked for. A reader asking "where did this come from" and a reader asking
+  "what stopped it" look in different places, and both have an entry.
+- The hallucination-bait fixture really did need no new mechanism. Naming that as the finding was
+  better than the alternative, which was a redundant rule that would have looked like more work.
+
+### The carried M2 item, and what proving it required
+
+The non-expiry pin is a characterisation test and passed on arrival, which is stated in the test
+itself rather than glossed. Firing it deliberately was the only way to show it means something: a
+temporary 30 day expiry window in `src/stages/queue.mjs` failed exactly the three pinning tests
+and left the other 21 queue tests green. That is the accident the pin exists to catch, and the
+verbatim output is in the lane report.
+
+The third of those three tests is the more durable half and was not in the spec: the queue stage
+reads no clock at all, asserted against its own source. Expiry cannot be added without giving it
+one, so a reviewer can check the claim by looking rather than by trusting two assertions.
+
+### Counts
+
+Base `1365248` (merged M2): **549** tests. At the end of this lane: **679**, all green, every
+behaviour commit red first. Golden ledger 55 -> 83 entries. Demo corpus 10 -> 14 signals, 8 -> 12
+refusals, one survivor and one parked lead throughout. Refusals now come from five stages rather
+than three.
