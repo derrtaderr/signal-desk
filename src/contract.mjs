@@ -12,6 +12,16 @@ export const NEEDS_HUMAN = 'NEEDS_HUMAN';
 
 export const VERDICTS = [PASS, REFUSE, NEEDS_HUMAN];
 
+// Thrown only by assertStageResult, so the kernel can tell "this stage broke the contract"
+// apart from "this stage threw while doing its job". Both become a REFUSE; they get
+// different reason codes because a reader debugging one does not want the other.
+export class ContractViolationError extends TypeError {
+  constructor(message) {
+    super(message);
+    this.name = 'ContractViolationError';
+  }
+}
+
 function requireReason(reason, verdict) {
   if (typeof reason !== 'string' || reason.trim() === '') {
     throw new TypeError(`a ${verdict} result requires a machine-readable reason code`);
@@ -36,20 +46,20 @@ export function needsHuman({ reason, output = {}, entries = [], ...rest } = {}) 
 // REFUSE, never a pass-through, so a malformed result cannot become a send.
 export function assertStageResult(result, stageName) {
   if (result === null || typeof result !== 'object' || Array.isArray(result)) {
-    throw new TypeError(`stage ${stageName} returned a non-object result`);
+    throw new ContractViolationError(`stage ${stageName} returned a non-object result`);
   }
   if (!VERDICTS.includes(result.status)) {
-    throw new TypeError(
+    throw new ContractViolationError(
       `stage ${stageName} returned status ${JSON.stringify(result.status)}, expected one of ${VERDICTS.join(', ')}`,
     );
   }
   if (!Array.isArray(result.entries)) {
-    throw new TypeError(`stage ${stageName} returned entries that are not an array`);
+    throw new ContractViolationError(`stage ${stageName} returned entries that are not an array`);
   }
   if (result.status !== PASS) {
     const codes = result.reason_codes;
     if (!Array.isArray(codes) || codes.length === 0) {
-      throw new TypeError(`stage ${stageName} returned ${result.status} with no reason code`);
+      throw new ContractViolationError(`stage ${stageName} returned ${result.status} with no reason code`);
     }
   }
   return result;
