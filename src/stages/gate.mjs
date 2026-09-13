@@ -1,9 +1,15 @@
-// Stage 6 — gate. M1 scope.
+// Stage 6 — gate.
 //
-// The design's full gate is three parts: PII redaction, an LLM rubric, and a claim-grounding
-// check. M2 builds all three. What M1 ships is the deterministic rule layer, which is the part
-// that needs no key and no model, and which can genuinely refuse. The structure here is the
-// structure M2 extends: a list of named rules, every one evaluated, violations collected.
+// The design's full gate is three parts: fail-closed PII redaction, deterministic rules plus a
+// fail-closed LLM rubric, and a claim-grounding check. M1 shipped the deterministic rule layer.
+// M2 is landing the rest, one part per commit, and this header says which are in:
+//
+//   (a) fail-closed PII redaction   LANDED, see src/redaction.mjs
+//   (b) fail-closed LLM rubric      not yet
+//   (c) prose claim grounding       not yet
+//
+// The structure is a list of named rules, every one evaluated, violations collected. Rule order
+// is the reported order, so the same broken draft always refuses for the same named reason.
 //
 // Fail-closed is the invariant, and it is enforced twice. The whole evaluation runs inside a
 // try/catch that converts any error into REFUSE/GATE_ERROR, and the kernel converts a throw
@@ -12,18 +18,9 @@
 // Fail-closed patterns adapted from redaction-gate and gtm-agent-evals; no code vendored.
 
 import { pass, refuse } from '../contract.mjs';
+import { redact, assertClean } from '../redaction.mjs';
 
 const PLACEHOLDER = /\{[a-z0-9_]+(?::[a-z0-9_]+)?\}/i;
-const EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
-// Deliberately loose. A gate that only catches the tidy format is a gate that lets the untidy
-// one through.
-//
-// The looseness is justified by asymmetric cost, not by cheapness. A gate refusal is TERMINAL
-// for this lead in this run; nobody glances at it and waves it past. What makes over-matching
-// the right trade anyway is that the two errors are not the same size. A falsely refused draft
-// is recoverable by editing the text and running again. A phone number that reaches a stranger
-// is not recoverable at all.
-const PHONE = /(?:\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/;
 
 // Rule order is stable and meaningful: the reported reason code is the first violation in
 // this order, so the same broken draft always refuses for the same named reason.
@@ -67,22 +64,35 @@ function evaluateRules(lead, config) {
     }
   }
 
-  rulesRun.push('pii_leakage');
-  const recipient = String(draft.to).toLowerCase();
-  const addresses = text.match(EMAIL) ?? [];
-  for (const address of addresses) {
-    if (address.toLowerCase() === recipient) continue;
+  // Fail-closed redaction, two passes with two detectors. See src/redaction.mjs for why one
+  // pass cannot be enough. Nothing is sent in redacted form; redaction here is the mechanism
+  // that produces a CHECKABLE proof of completeness, and the draft passes through untouched.
+  rulesRun.push('pii_redaction');
+  const { redacted, hits } = redact(text, { allow: [String(draft.to)] });
+  const verification = assertClean(redacted);
+
+  // Reported first within this rule, because it is the more severe finding. "I found a phone
+  // number" means everything worked. "Something is still in there after I redacted" means the
+  // gate cannot characterise what it is holding.
+  if (!verification.clean) {
+    const [first] = verification.found;
     violations.push({
-      rule: 'pii_leakage',
-      code: 'PII_IN_BODY',
-      detail: `the draft contains a third-party email address: ${address}`,
+      rule: 'pii_redaction',
+      code: 'REDACTION_INCOMPLETE',
+      detail:
+        `redaction ran and verification still found ${first.type}-shaped content ` +
+        `("${first.value}"), so the gate cannot certify what this draft contains`,
     });
   }
-  if (PHONE.test(text)) {
+
+  for (const hit of hits) {
     violations.push({
-      rule: 'pii_leakage',
+      rule: 'pii_redaction',
       code: 'PII_IN_BODY',
-      detail: 'the draft contains something shaped like a phone number',
+      detail:
+        hit.type === 'email'
+          ? `the draft contains a third-party email address: ${hit.value}`
+          : `the draft contains something shaped like a phone number: ${hit.value}`,
     });
   }
 
