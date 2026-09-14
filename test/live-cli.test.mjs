@@ -599,12 +599,12 @@ test('every flag the CLI genuinely accepts still works', () => {
   const hash = /\b(draft-[0-9a-f]+)\b/.exec(queued)[1];
 
   // --note and --by on a decision, --replay on dlq, --signals on a live run.
-  const rejected = execFileSync(process.execPath, [BIN, 'reject', hash, '--note', 'not now', '--by', 'jason'], {
+  const rejected = execFileSync(process.execPath, [BIN, 'reject', hash, '--note', 'not now', '--by', 'operator'], {
     encoding: 'utf8',
     env: { PATH: process.env.PATH, SIGNAL_DESK_RUNS_DIR: runs },
   });
   assert.match(rejected, /rejected/);
-  assert.match(rejected, /jason/);
+  assert.match(rejected, /operator/);
 
   const dlq = execFileSync(process.execPath, [BIN, 'dlq', '--replay'], {
     encoding: 'utf8',

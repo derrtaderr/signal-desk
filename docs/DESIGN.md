@@ -1,19 +1,16 @@
 ---
 name: signal-desk design spec
-read_by: the /build-lane session that implements signal-desk M1, and superpowers:writing-plans when the implementation plan is drafted
 date: 2026-09-12
-status: approved-design, pre-plan
+status: shipped — all four milestones (M1-M4) built against this document
 ---
 
 # signal-desk — design spec
 
 ## What this is
 
-A signal-to-outreach pipeline where every decision can be inspected, replayed, or refused. Open, stranger-installable, generic by construction. Jason's career flagship: the build whose reader is a Head of GTM Engineering, and whose differentiator is the thesis made structural — the edge is the judgment you construct, not the capability you buy.
+A signal-to-outreach pipeline where every decision can be inspected, replayed, or refused. Open, stranger-installable, generic by construction. The design bet is one thesis made structural: the edge is the judgment you construct, not the capability you buy.
 
-Explicitly NOT Magnetiz infrastructure. It is Jason's library (private repo under `derrtaderr` at birth, public only on his standalone yes). No Magnetiz operating data ever lands in it.
-
-## Ambition ladder (named per the standing ambition check)
+## Ambition ladder
 
 1. **First step (M1):** a stranger can install it, run one complete GTM workflow keylessly, and inspect every decision and safeguard.
 2. **Flagship:** the system handles messy inputs, catches consequential mistakes, and shows where human judgment belongs.
@@ -114,9 +111,9 @@ TDD, node built-in test runner, zero dev-deps. Four families:
 - No sending. No SMTP/HeyReach adapters in the open repo.
 - No plugin framework, registry, or marketplace.
 - No hosted version, no telemetry, no accounts.
-- No Magnetiz data, config, or brand anywhere in the repo.
+- No company operating data anywhere in the repo; fixtures are synthetic (.test domains only).
 - Dashboard is read-only over the ledger; approvals happen in the CLI only.
 
-## Next step after this spec
+## How it was built against this document
 
-Invoke superpowers:writing-plans to produce the M1 implementation plan. Dispatchability note for the slate: this is a new repo, so it satisfies repo-independence and can run as its own lane.
+Each milestone ran as its own branch and PR, built test-first, and passed an independent adversarial review before merging. The per-milestone specs (docs/M1-SPEC.md through docs/M4-SPEC.md) record what was actually built, including every argued divergence from this design. The PR trail carries the full review records.

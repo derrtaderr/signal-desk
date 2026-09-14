@@ -196,7 +196,7 @@ demonstrated the cost with a live repro.
 
 ## Week-one signals, if this goes public
 
-M2 is private. If Jason gives publishing its own yes, these are the leading indicators worth
+These are the leading indicators worth
 watching, in the order they mean something.
 
 1. **Someone ran it.** A cloner who reports output, files an issue with a run id in it, or
