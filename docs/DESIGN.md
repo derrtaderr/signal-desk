@@ -70,7 +70,7 @@ stage(input, ctx) -> { status: PASS | REFUSE | NEEDS_HUMAN, output, entries }
 
 - **CLI verbs:** `run` (fixture demo), `run --live`, `queue`, `approve <id>`, `reject <id>`, `explain <lead>`, `replay <run>`, `why <decision-id>`, `dashboard`.
 - **Dashboard:** one self-contained HTML file rendering any ledger — funnel view, per-lead decision trail, refusal breakdown, gate stats (gtm-agent-evals dashboard pattern).
-- **Exhibit:** demo-agent produces the video from a real fixture run, making the README claim literal: Jason's other systems run inside this one.
+- **Exhibit:** demo-agent produces the video from a real fixture run, making the README claim literal: the systems this pipeline composes are themselves real, separately published tools.
 
 ## Messy-input fixture suite (the flagship rung)
 
