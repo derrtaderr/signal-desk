@@ -105,6 +105,16 @@ test('the request goes to the Messages API with the version header the API requi
   assert.deepEqual(body.messages, [{ role: 'user', content: REQUEST.prompt }]);
 });
 
+test('the request carries no temperature, because the live API rejects it for this model family', async () => {
+  // Found by the first real run of the keyed smoke test (2026-09-14): the Messages API answered
+  // 400 "`temperature` is deprecated for this model" for claude-sonnet-5. Determinism was never
+  // this knob's to give on a live call; the gates and the recorded replay carry that promise.
+  const { model, calls } = harness([completion('ok')]);
+  await model(REQUEST);
+  const body = JSON.parse(calls[0].options.body);
+  assert.equal('temperature' in body, false);
+});
+
 test('the model id is configurable, so a default does not become a lock-in', async () => {
   const { model, calls } = harness([completion('ok')], { model: 'claude-opus-5' });
   await model(REQUEST);
