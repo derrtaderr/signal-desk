@@ -102,10 +102,9 @@ export function createLiveModel({
     const payload = JSON.stringify({
       model,
       max_tokens: perCallMaxTokens ?? maxTokens,
-      // Zero, because this pipeline's whole claim is that the same inputs produce the same
-      // decisions. A live run cannot be byte-reproducible, and there is no reason to add variance
-      // it did not need on top of the variance it cannot avoid.
-      temperature: 0,
+      // No temperature. The live API rejects the knob for this model family (400, found by the
+      // first real smoke run), and determinism was never a live call's promise to keep. The gates
+      // verify every output regardless, and replay reproduces live runs from their recordings.
       ...(typeof system === 'string' && system !== '' ? { system } : {}),
       messages: [{ role: 'user', content: prompt }],
     });
