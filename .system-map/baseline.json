@@ -1,0 +1,1562 @@
+{
+  "schema": "system-map/baseline@1",
+  "modules": [
+    {
+      "path": "bin/signal-desk.mjs",
+      "language": "node",
+      "contentHash": "8edb95d66169",
+      "cite": "bin/signal-desk.mjs:1"
+    },
+    {
+      "path": "scripts/draft-corpus.mjs",
+      "language": "node",
+      "contentHash": "d02d7fe954ba",
+      "cite": "scripts/draft-corpus.mjs:1"
+    },
+    {
+      "path": "scripts/fixture-data.mjs",
+      "language": "node",
+      "contentHash": "f5753a26a49f",
+      "cite": "scripts/fixture-data.mjs:1"
+    },
+    {
+      "path": "scripts/make-fixtures.mjs",
+      "language": "node",
+      "contentHash": "81d164ef6628",
+      "cite": "scripts/make-fixtures.mjs:1"
+    },
+    {
+      "path": "scripts/record-approvals.mjs",
+      "language": "node",
+      "contentHash": "8191df9d0db6",
+      "cite": "scripts/record-approvals.mjs:1"
+    },
+    {
+      "path": "scripts/record-rubric.mjs",
+      "language": "node",
+      "contentHash": "6e11063fe368",
+      "cite": "scripts/record-rubric.mjs:1"
+    },
+    {
+      "path": "scripts/update-golden.mjs",
+      "language": "node",
+      "contentHash": "f98ae9e50f28",
+      "cite": "scripts/update-golden.mjs:1"
+    },
+    {
+      "path": "src/adapters.mjs",
+      "language": "node",
+      "contentHash": "440df8df7a94",
+      "cite": "src/adapters.mjs:1"
+    },
+    {
+      "path": "src/canonical.mjs",
+      "language": "node",
+      "contentHash": "ddbcd3017f46",
+      "cite": "src/canonical.mjs:1"
+    },
+    {
+      "path": "src/cli.mjs",
+      "language": "node",
+      "contentHash": "f9cf31e1948d",
+      "cite": "src/cli.mjs:1"
+    },
+    {
+      "path": "src/config.mjs",
+      "language": "node",
+      "contentHash": "6c4d81e9b25a",
+      "cite": "src/config.mjs:1"
+    },
+    {
+      "path": "src/context.mjs",
+      "language": "node",
+      "contentHash": "60775e22ac3e",
+      "cite": "src/context.mjs:1"
+    },
+    {
+      "path": "src/contract.mjs",
+      "language": "node",
+      "contentHash": "1d123f057110",
+      "cite": "src/contract.mjs:1"
+    },
+    {
+      "path": "src/dashboard.mjs",
+      "language": "node",
+      "contentHash": "908e57cbf615",
+      "cite": "src/dashboard.mjs:1"
+    },
+    {
+      "path": "src/decisions.mjs",
+      "language": "node",
+      "contentHash": "e0b45adfa7f6",
+      "cite": "src/decisions.mjs:1"
+    },
+    {
+      "path": "src/draft-hash.mjs",
+      "language": "node",
+      "contentHash": "28e4fa785e2d",
+      "cite": "src/draft-hash.mjs:1"
+    },
+    {
+      "path": "src/draft-prompt.mjs",
+      "language": "node",
+      "contentHash": "052b3d627a0f",
+      "cite": "src/draft-prompt.mjs:1"
+    },
+    {
+      "path": "src/injection.mjs",
+      "language": "node",
+      "contentHash": "07460faeebf1",
+      "cite": "src/injection.mjs:1"
+    },
+    {
+      "path": "src/kernel.mjs",
+      "language": "node",
+      "contentHash": "6c8661a12e19",
+      "cite": "src/kernel.mjs:1"
+    },
+    {
+      "path": "src/ledger.mjs",
+      "language": "node",
+      "contentHash": "9f77a0df59e4",
+      "cite": "src/ledger.mjs:1"
+    },
+    {
+      "path": "src/live/anthropic.mjs",
+      "language": "node",
+      "contentHash": "0334c5ab56f3",
+      "cite": "src/live/anthropic.mjs:1"
+    },
+    {
+      "path": "src/live/capture.mjs",
+      "language": "node",
+      "contentHash": "f4c6e28b77fd",
+      "cite": "src/live/capture.mjs:1"
+    },
+    {
+      "path": "src/live/config.mjs",
+      "language": "node",
+      "contentHash": "c98a43a93b62",
+      "cite": "src/live/config.mjs:1"
+    },
+    {
+      "path": "src/live/dlq.mjs",
+      "language": "node",
+      "contentHash": "f598a789b51c",
+      "cite": "src/live/dlq.mjs:1"
+    },
+    {
+      "path": "src/live/http.mjs",
+      "language": "node",
+      "contentHash": "9efef27bbe40",
+      "cite": "src/live/http.mjs:1"
+    },
+    {
+      "path": "src/live/keys.mjs",
+      "language": "node",
+      "contentHash": "3cdf686d39c8",
+      "cite": "src/live/keys.mjs:1"
+    },
+    {
+      "path": "src/live/node-transport.mjs",
+      "language": "node",
+      "contentHash": "9ad2cce438be",
+      "cite": "src/live/node-transport.mjs:1"
+    },
+    {
+      "path": "src/live/signals.mjs",
+      "language": "node",
+      "contentHash": "0b5236b10e43",
+      "cite": "src/live/signals.mjs:1"
+    },
+    {
+      "path": "src/prose-claims.mjs",
+      "language": "node",
+      "contentHash": "5b09a32d6e03",
+      "cite": "src/prose-claims.mjs:1"
+    },
+    {
+      "path": "src/redaction.mjs",
+      "language": "node",
+      "contentHash": "05da43a34c04",
+      "cite": "src/redaction.mjs:1"
+    },
+    {
+      "path": "src/rubric.mjs",
+      "language": "node",
+      "contentHash": "5ea4cef95ac4",
+      "cite": "src/rubric.mjs:1"
+    },
+    {
+      "path": "src/runner.mjs",
+      "language": "node",
+      "contentHash": "0cb0f0cd34af",
+      "cite": "src/runner.mjs:1"
+    },
+    {
+      "path": "src/stages/draft.mjs",
+      "language": "node",
+      "contentHash": "d7c3191fe73c",
+      "cite": "src/stages/draft.mjs:1"
+    },
+    {
+      "path": "src/stages/enrich.mjs",
+      "language": "node",
+      "contentHash": "0554f7aa0cdf",
+      "cite": "src/stages/enrich.mjs:1"
+    },
+    {
+      "path": "src/stages/gate.mjs",
+      "language": "node",
+      "contentHash": "94653739a864",
+      "cite": "src/stages/gate.mjs:1"
+    },
+    {
+      "path": "src/stages/handoff.mjs",
+      "language": "node",
+      "contentHash": "549dddacb5ac",
+      "cite": "src/stages/handoff.mjs:1"
+    },
+    {
+      "path": "src/stages/ingest.mjs",
+      "language": "node",
+      "contentHash": "40e234aa9dda",
+      "cite": "src/stages/ingest.mjs:1"
+    },
+    {
+      "path": "src/stages/queue.mjs",
+      "language": "node",
+      "contentHash": "3c05d9818eb3",
+      "cite": "src/stages/queue.mjs:1"
+    },
+    {
+      "path": "src/stages/route.mjs",
+      "language": "node",
+      "contentHash": "7dfa0378f158",
+      "cite": "src/stages/route.mjs:1"
+    },
+    {
+      "path": "src/stages/score.mjs",
+      "language": "node",
+      "contentHash": "6cd566c06225",
+      "cite": "src/stages/score.mjs:1"
+    }
+  ],
+  "edges": [
+    {
+      "from": "bin/signal-desk.mjs",
+      "specifier": "../src/cli.mjs",
+      "kind": "import",
+      "line": 2,
+      "cite": "bin/signal-desk.mjs:2",
+      "to": "src/cli.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/draft-corpus.mjs",
+      "specifier": "../src/runner.mjs",
+      "kind": "import",
+      "line": 10,
+      "cite": "scripts/draft-corpus.mjs:10",
+      "to": "src/runner.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/draft-corpus.mjs",
+      "specifier": "../src/kernel.mjs",
+      "kind": "import",
+      "line": 11,
+      "cite": "scripts/draft-corpus.mjs:11",
+      "to": "src/kernel.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/draft-corpus.mjs",
+      "specifier": "../src/stages/ingest.mjs",
+      "kind": "import",
+      "line": 12,
+      "cite": "scripts/draft-corpus.mjs:12",
+      "to": "src/stages/ingest.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/draft-corpus.mjs",
+      "specifier": "../src/stages/enrich.mjs",
+      "kind": "import",
+      "line": 13,
+      "cite": "scripts/draft-corpus.mjs:13",
+      "to": "src/stages/enrich.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/draft-corpus.mjs",
+      "specifier": "../src/stages/score.mjs",
+      "kind": "import",
+      "line": 14,
+      "cite": "scripts/draft-corpus.mjs:14",
+      "to": "src/stages/score.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/draft-corpus.mjs",
+      "specifier": "../src/stages/route.mjs",
+      "kind": "import",
+      "line": 15,
+      "cite": "scripts/draft-corpus.mjs:15",
+      "to": "src/stages/route.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/draft-corpus.mjs",
+      "specifier": "../src/stages/draft.mjs",
+      "kind": "import",
+      "line": 16,
+      "cite": "scripts/draft-corpus.mjs:16",
+      "to": "src/stages/draft.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/fixture-data.mjs",
+      "specifier": "../src/stages/ingest.mjs",
+      "kind": "import",
+      "line": 6,
+      "cite": "scripts/fixture-data.mjs:6",
+      "to": "src/stages/ingest.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/fixture-data.mjs",
+      "specifier": "../src/config.mjs",
+      "kind": "import",
+      "line": 7,
+      "cite": "scripts/fixture-data.mjs:7",
+      "to": "src/config.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/make-fixtures.mjs",
+      "specifier": "./fixture-data.mjs",
+      "kind": "import",
+      "line": 11,
+      "cite": "scripts/make-fixtures.mjs:11",
+      "to": "scripts/fixture-data.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/make-fixtures.mjs",
+      "specifier": "node:fs",
+      "kind": "import",
+      "line": 7,
+      "cite": "scripts/make-fixtures.mjs:7",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/make-fixtures.mjs",
+      "specifier": "node:path",
+      "kind": "import",
+      "line": 8,
+      "cite": "scripts/make-fixtures.mjs:8",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/make-fixtures.mjs",
+      "specifier": "node:url",
+      "kind": "import",
+      "line": 9,
+      "cite": "scripts/make-fixtures.mjs:9",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/record-approvals.mjs",
+      "specifier": "node:fs",
+      "kind": "import",
+      "line": 19,
+      "cite": "scripts/record-approvals.mjs:19",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/record-approvals.mjs",
+      "specifier": "node:path",
+      "kind": "import",
+      "line": 20,
+      "cite": "scripts/record-approvals.mjs:20",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/record-approvals.mjs",
+      "specifier": "node:url",
+      "kind": "import",
+      "line": 21,
+      "cite": "scripts/record-approvals.mjs:21",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/record-approvals.mjs",
+      "specifier": "../src/runner.mjs",
+      "kind": "import",
+      "line": 23,
+      "cite": "scripts/record-approvals.mjs:23",
+      "to": "src/runner.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/record-approvals.mjs",
+      "specifier": "./draft-corpus.mjs",
+      "kind": "import",
+      "line": 24,
+      "cite": "scripts/record-approvals.mjs:24",
+      "to": "scripts/draft-corpus.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/record-rubric.mjs",
+      "specifier": "node:fs",
+      "kind": "import",
+      "line": 19,
+      "cite": "scripts/record-rubric.mjs:19",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/record-rubric.mjs",
+      "specifier": "node:path",
+      "kind": "import",
+      "line": 20,
+      "cite": "scripts/record-rubric.mjs:20",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/record-rubric.mjs",
+      "specifier": "node:url",
+      "kind": "import",
+      "line": 21,
+      "cite": "scripts/record-rubric.mjs:21",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/record-rubric.mjs",
+      "specifier": "../src/runner.mjs",
+      "kind": "import",
+      "line": 23,
+      "cite": "scripts/record-rubric.mjs:23",
+      "to": "src/runner.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/record-rubric.mjs",
+      "specifier": "../src/config.mjs",
+      "kind": "import",
+      "line": 24,
+      "cite": "scripts/record-rubric.mjs:24",
+      "to": "src/config.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/record-rubric.mjs",
+      "specifier": "./draft-corpus.mjs",
+      "kind": "import",
+      "line": 25,
+      "cite": "scripts/record-rubric.mjs:25",
+      "to": "scripts/draft-corpus.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/update-golden.mjs",
+      "specifier": "node:url",
+      "kind": "import",
+      "line": 10,
+      "cite": "scripts/update-golden.mjs:10",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/update-golden.mjs",
+      "specifier": "../src/runner.mjs",
+      "kind": "import",
+      "line": 12,
+      "cite": "scripts/update-golden.mjs:12",
+      "to": "src/runner.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "scripts/update-golden.mjs",
+      "specifier": "node:fs",
+      "kind": "import",
+      "line": 8,
+      "cite": "scripts/update-golden.mjs:8",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "scripts/update-golden.mjs",
+      "specifier": "node:path",
+      "kind": "import",
+      "line": 9,
+      "cite": "scripts/update-golden.mjs:9",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "node:fs",
+      "kind": "import",
+      "line": 15,
+      "cite": "src/cli.mjs:15",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "node:path",
+      "kind": "import",
+      "line": 16,
+      "cite": "src/cli.mjs:16",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "node:url",
+      "kind": "import",
+      "line": 17,
+      "cite": "src/cli.mjs:17",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./runner.mjs",
+      "kind": "import",
+      "line": 19,
+      "cite": "src/cli.mjs:19",
+      "to": "src/runner.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./context.mjs",
+      "kind": "import",
+      "line": 20,
+      "cite": "src/cli.mjs:20",
+      "to": "src/context.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./live/http.mjs",
+      "kind": "import",
+      "line": 21,
+      "cite": "src/cli.mjs:21",
+      "to": "src/live/http.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./live/anthropic.mjs",
+      "kind": "import",
+      "line": 22,
+      "cite": "src/cli.mjs:22",
+      "to": "src/live/anthropic.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./live/node-transport.mjs",
+      "kind": "import",
+      "line": 23,
+      "cite": "src/cli.mjs:23",
+      "to": "src/live/node-transport.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./live/keys.mjs",
+      "kind": "import",
+      "line": 30,
+      "cite": "src/cli.mjs:30",
+      "to": "src/live/keys.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./live/config.mjs",
+      "kind": "import",
+      "line": 31,
+      "cite": "src/cli.mjs:31",
+      "to": "src/live/config.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./live/signals.mjs",
+      "kind": "import",
+      "line": 32,
+      "cite": "src/cli.mjs:32",
+      "to": "src/live/signals.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./live/dlq.mjs",
+      "kind": "import",
+      "line": 33,
+      "cite": "src/cli.mjs:33",
+      "to": "src/live/dlq.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./decisions.mjs",
+      "kind": "import",
+      "line": 40,
+      "cite": "src/cli.mjs:40",
+      "to": "src/decisions.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./kernel.mjs",
+      "kind": "import",
+      "line": 41,
+      "cite": "src/cli.mjs:41",
+      "to": "src/kernel.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./ledger.mjs",
+      "kind": "import",
+      "line": 42,
+      "cite": "src/cli.mjs:42",
+      "to": "src/ledger.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./adapters.mjs",
+      "kind": "import",
+      "line": 43,
+      "cite": "src/cli.mjs:43",
+      "to": "src/adapters.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./dashboard.mjs",
+      "kind": "import",
+      "line": 44,
+      "cite": "src/cli.mjs:44",
+      "to": "src/dashboard.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/config.mjs",
+      "specifier": "./stages/gate.mjs",
+      "kind": "import",
+      "line": 10,
+      "cite": "src/config.mjs:10",
+      "to": "src/stages/gate.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/config.mjs",
+      "specifier": "./stages/queue.mjs",
+      "kind": "import",
+      "line": 11,
+      "cite": "src/config.mjs:11",
+      "to": "src/stages/queue.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/config.mjs",
+      "specifier": "./stages/handoff.mjs",
+      "kind": "import",
+      "line": 12,
+      "cite": "src/config.mjs:12",
+      "to": "src/stages/handoff.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/config.mjs",
+      "specifier": "./stages/ingest.mjs",
+      "kind": "import",
+      "line": 5,
+      "cite": "src/config.mjs:5",
+      "to": "src/stages/ingest.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/config.mjs",
+      "specifier": "./stages/enrich.mjs",
+      "kind": "import",
+      "line": 6,
+      "cite": "src/config.mjs:6",
+      "to": "src/stages/enrich.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/config.mjs",
+      "specifier": "./stages/score.mjs",
+      "kind": "import",
+      "line": 7,
+      "cite": "src/config.mjs:7",
+      "to": "src/stages/score.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/config.mjs",
+      "specifier": "./stages/route.mjs",
+      "kind": "import",
+      "line": 8,
+      "cite": "src/config.mjs:8",
+      "to": "src/stages/route.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/config.mjs",
+      "specifier": "./stages/draft.mjs",
+      "kind": "import",
+      "line": 9,
+      "cite": "src/config.mjs:9",
+      "to": "src/stages/draft.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/dashboard.mjs",
+      "specifier": "./ledger.mjs",
+      "kind": "import",
+      "line": 36,
+      "cite": "src/dashboard.mjs:36",
+      "to": "src/ledger.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/dashboard.mjs",
+      "specifier": "./canonical.mjs",
+      "kind": "import",
+      "line": 37,
+      "cite": "src/dashboard.mjs:37",
+      "to": "src/canonical.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/decisions.mjs",
+      "specifier": "node:fs",
+      "kind": "import",
+      "line": 20,
+      "cite": "src/decisions.mjs:20",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/decisions.mjs",
+      "specifier": "node:path",
+      "kind": "import",
+      "line": 21,
+      "cite": "src/decisions.mjs:21",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/decisions.mjs",
+      "specifier": "./ledger.mjs",
+      "kind": "import",
+      "line": 23,
+      "cite": "src/decisions.mjs:23",
+      "to": "src/ledger.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/draft-hash.mjs",
+      "specifier": "node:crypto",
+      "kind": "import",
+      "line": 12,
+      "cite": "src/draft-hash.mjs:12",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/draft-hash.mjs",
+      "specifier": "./canonical.mjs",
+      "kind": "import",
+      "line": 14,
+      "cite": "src/draft-hash.mjs:14",
+      "to": "src/canonical.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/draft-prompt.mjs",
+      "specifier": "node:crypto",
+      "kind": "import",
+      "line": 33,
+      "cite": "src/draft-prompt.mjs:33",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/draft-prompt.mjs",
+      "specifier": "./canonical.mjs",
+      "kind": "import",
+      "line": 35,
+      "cite": "src/draft-prompt.mjs:35",
+      "to": "src/canonical.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/injection.mjs",
+      "specifier": "./redaction.mjs",
+      "kind": "import",
+      "line": 30,
+      "cite": "src/injection.mjs:30",
+      "to": "src/redaction.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/kernel.mjs",
+      "specifier": "./contract.mjs",
+      "kind": "import",
+      "line": 19,
+      "cite": "src/kernel.mjs:19",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/kernel.mjs",
+      "specifier": "./ledger.mjs",
+      "kind": "import",
+      "line": 20,
+      "cite": "src/kernel.mjs:20",
+      "to": "src/ledger.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/ledger.mjs",
+      "specifier": "node:crypto",
+      "kind": "import",
+      "line": 26,
+      "cite": "src/ledger.mjs:26",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/ledger.mjs",
+      "specifier": "./canonical.mjs",
+      "kind": "import",
+      "line": 28,
+      "cite": "src/ledger.mjs:28",
+      "to": "src/canonical.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/ledger.mjs",
+      "specifier": "./contract.mjs",
+      "kind": "import",
+      "line": 29,
+      "cite": "src/ledger.mjs:29",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/live/anthropic.mjs",
+      "specifier": "./keys.mjs",
+      "kind": "import",
+      "line": 26,
+      "cite": "src/live/anthropic.mjs:26",
+      "to": "src/live/keys.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/live/capture.mjs",
+      "specifier": "node:crypto",
+      "kind": "import",
+      "line": 24,
+      "cite": "src/live/capture.mjs:24",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/live/capture.mjs",
+      "specifier": "../canonical.mjs",
+      "kind": "import",
+      "line": 26,
+      "cite": "src/live/capture.mjs:26",
+      "to": "src/canonical.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/live/capture.mjs",
+      "specifier": "../context.mjs",
+      "kind": "import",
+      "line": 27,
+      "cite": "src/live/capture.mjs:27",
+      "to": "src/context.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/live/config.mjs",
+      "specifier": "../config.mjs",
+      "kind": "import",
+      "line": 25,
+      "cite": "src/live/config.mjs:25",
+      "to": "src/config.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/live/config.mjs",
+      "specifier": "./anthropic.mjs",
+      "kind": "import",
+      "line": 26,
+      "cite": "src/live/config.mjs:26",
+      "to": "src/live/anthropic.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/live/dlq.mjs",
+      "specifier": "node:fs",
+      "kind": "import",
+      "line": 24,
+      "cite": "src/live/dlq.mjs:24",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/live/dlq.mjs",
+      "specifier": "node:path",
+      "kind": "import",
+      "line": 25,
+      "cite": "src/live/dlq.mjs:25",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/live/dlq.mjs",
+      "specifier": "node:crypto",
+      "kind": "import",
+      "line": 26,
+      "cite": "src/live/dlq.mjs:26",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/live/keys.mjs",
+      "specifier": "node:crypto",
+      "kind": "import",
+      "line": 1,
+      "cite": "src/live/keys.mjs:1",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/live/signals.mjs",
+      "specifier": "node:fs",
+      "kind": "import",
+      "line": 27,
+      "cite": "src/live/signals.mjs:27",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/live/signals.mjs",
+      "specifier": "node:path",
+      "kind": "import",
+      "line": 28,
+      "cite": "src/live/signals.mjs:28",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/rubric.mjs",
+      "specifier": "./draft-prompt.mjs",
+      "kind": "import",
+      "line": 32,
+      "cite": "src/rubric.mjs:32",
+      "to": "src/draft-prompt.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "node:crypto",
+      "kind": "import",
+      "line": 10,
+      "cite": "src/runner.mjs:10",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "./canonical.mjs",
+      "kind": "import",
+      "line": 12,
+      "cite": "src/runner.mjs:12",
+      "to": "src/canonical.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "./ledger.mjs",
+      "kind": "import",
+      "line": 13,
+      "cite": "src/runner.mjs:13",
+      "to": "src/ledger.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "./context.mjs",
+      "kind": "import",
+      "line": 14,
+      "cite": "src/runner.mjs:14",
+      "to": "src/context.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "./live/capture.mjs",
+      "kind": "import",
+      "line": 15,
+      "cite": "src/runner.mjs:15",
+      "to": "src/live/capture.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "./live/keys.mjs",
+      "kind": "import",
+      "line": 16,
+      "cite": "src/runner.mjs:16",
+      "to": "src/live/keys.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "./kernel.mjs",
+      "kind": "import",
+      "line": 17,
+      "cite": "src/runner.mjs:17",
+      "to": "src/kernel.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "./config.mjs",
+      "kind": "import",
+      "line": 18,
+      "cite": "src/runner.mjs:18",
+      "to": "src/config.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "node:fs",
+      "kind": "import",
+      "line": 7,
+      "cite": "src/runner.mjs:7",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "node:path",
+      "kind": "import",
+      "line": 8,
+      "cite": "src/runner.mjs:8",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "node:url",
+      "kind": "import",
+      "line": 9,
+      "cite": "src/runner.mjs:9",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/stages/draft.mjs",
+      "specifier": "../contract.mjs",
+      "kind": "import",
+      "line": 18,
+      "cite": "src/stages/draft.mjs:18",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/draft.mjs",
+      "specifier": "../draft-hash.mjs",
+      "kind": "import",
+      "line": 19,
+      "cite": "src/stages/draft.mjs:19",
+      "to": "src/draft-hash.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/draft.mjs",
+      "specifier": "../draft-prompt.mjs",
+      "kind": "import",
+      "line": 20,
+      "cite": "src/stages/draft.mjs:20",
+      "to": "src/draft-prompt.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/enrich.mjs",
+      "specifier": "../contract.mjs",
+      "kind": "import",
+      "line": 12,
+      "cite": "src/stages/enrich.mjs:12",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/enrich.mjs",
+      "specifier": "../injection.mjs",
+      "kind": "import",
+      "line": 13,
+      "cite": "src/stages/enrich.mjs:13",
+      "to": "src/injection.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/gate.mjs",
+      "specifier": "../contract.mjs",
+      "kind": "import",
+      "line": 21,
+      "cite": "src/stages/gate.mjs:21",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/gate.mjs",
+      "specifier": "../redaction.mjs",
+      "kind": "import",
+      "line": 22,
+      "cite": "src/stages/gate.mjs:22",
+      "to": "src/redaction.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/gate.mjs",
+      "specifier": "../prose-claims.mjs",
+      "kind": "import",
+      "line": 23,
+      "cite": "src/stages/gate.mjs:23",
+      "to": "src/prose-claims.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/gate.mjs",
+      "specifier": "../injection.mjs",
+      "kind": "import",
+      "line": 24,
+      "cite": "src/stages/gate.mjs:24",
+      "to": "src/injection.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/gate.mjs",
+      "specifier": "../draft-hash.mjs",
+      "kind": "import",
+      "line": 25,
+      "cite": "src/stages/gate.mjs:25",
+      "to": "src/draft-hash.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/gate.mjs",
+      "specifier": "../rubric.mjs",
+      "kind": "import",
+      "line": 26,
+      "cite": "src/stages/gate.mjs:26",
+      "to": "src/rubric.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/handoff.mjs",
+      "specifier": "../contract.mjs",
+      "kind": "import",
+      "line": 21,
+      "cite": "src/stages/handoff.mjs:21",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/handoff.mjs",
+      "specifier": "../draft-hash.mjs",
+      "kind": "import",
+      "line": 22,
+      "cite": "src/stages/handoff.mjs:22",
+      "to": "src/draft-hash.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/handoff.mjs",
+      "specifier": "../adapters.mjs",
+      "kind": "import",
+      "line": 23,
+      "cite": "src/stages/handoff.mjs:23",
+      "to": "src/adapters.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/ingest.mjs",
+      "specifier": "node:crypto",
+      "kind": "import",
+      "line": 11,
+      "cite": "src/stages/ingest.mjs:11",
+      "to": null,
+      "external": true,
+      "builtin": true
+    },
+    {
+      "from": "src/stages/ingest.mjs",
+      "specifier": "../canonical.mjs",
+      "kind": "import",
+      "line": 13,
+      "cite": "src/stages/ingest.mjs:13",
+      "to": "src/canonical.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/ingest.mjs",
+      "specifier": "../contract.mjs",
+      "kind": "import",
+      "line": 14,
+      "cite": "src/stages/ingest.mjs:14",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/queue.mjs",
+      "specifier": "../contract.mjs",
+      "kind": "import",
+      "line": 31,
+      "cite": "src/stages/queue.mjs:31",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/queue.mjs",
+      "specifier": "../draft-hash.mjs",
+      "kind": "import",
+      "line": 32,
+      "cite": "src/stages/queue.mjs:32",
+      "to": "src/draft-hash.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/route.mjs",
+      "specifier": "../contract.mjs",
+      "kind": "import",
+      "line": 11,
+      "cite": "src/stages/route.mjs:11",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/stages/score.mjs",
+      "specifier": "../contract.mjs",
+      "kind": "import",
+      "line": 10,
+      "cite": "src/stages/score.mjs:10",
+      "to": "src/contract.mjs",
+      "external": false,
+      "builtin": false
+    }
+  ],
+  "manifests": [
+    {
+      "path": "package.json",
+      "kind": "package.json",
+      "deps": [],
+      "devDeps": [],
+      "scripts": [
+        "golden:update",
+        "test"
+      ],
+      "declaresNothing": true,
+      "cite": "package.json:1"
+    }
+  ],
+  "env": [
+    {
+      "name": "SIGNAL_DESK_RUNS_DIR",
+      "how": "via an injected env object",
+      "line": 92,
+      "path": "src/cli.mjs",
+      "secretish": false,
+      "cite": "src/cli.mjs:92",
+      "alsoAt": []
+    }
+  ],
+  "routes": [],
+  "clients": [],
+  "hosts": [],
+  "schedules": [],
+  "observability": [],
+  "authChecks": [],
+  "writes": [
+    {
+      "call": "writeFileSync",
+      "target": "target",
+      "path": "scripts/make-fixtures.mjs",
+      "line": 20,
+      "cite": "scripts/make-fixtures.mjs:20",
+      "alsoWrites": 0,
+      "alsoAt": [],
+      "targets": [
+        "target"
+      ]
+    },
+    {
+      "call": "writeFileSync",
+      "target": "join(FIXTURES_DIR, 'approvals.json')",
+      "path": "scripts/record-approvals.mjs",
+      "line": 69,
+      "cite": "scripts/record-approvals.mjs:69",
+      "alsoWrites": 0,
+      "alsoAt": [],
+      "targets": [
+        "join(FIXTURES_DIR, 'approvals.json')"
+      ]
+    },
+    {
+      "call": "writeFileSync",
+      "target": "path",
+      "path": "scripts/record-rubric.mjs",
+      "line": 99,
+      "cite": "scripts/record-rubric.mjs:99",
+      "alsoWrites": 0,
+      "alsoAt": [],
+      "targets": [
+        "path"
+      ]
+    },
+    {
+      "call": "writeFileSync",
+      "target": "goldenPath",
+      "path": "scripts/update-golden.mjs",
+      "line": 20,
+      "cite": "scripts/update-golden.mjs:20",
+      "alsoWrites": 0,
+      "alsoAt": [],
+      "targets": [
+        "goldenPath"
+      ]
+    },
+    {
+      "call": "writeFileSync",
+      "target": "path",
+      "path": "src/cli.mjs",
+      "line": 145,
+      "cite": "src/cli.mjs:145",
+      "alsoWrites": 4,
+      "alsoAt": [
+        "src/cli.mjs:179",
+        "src/cli.mjs:184",
+        "src/cli.mjs:227",
+        "src/cli.mjs:848"
+      ],
+      "targets": [
+        "path",
+        "join(dir, 'ledger.jsonl')",
+        "join(dir, 'inputs.json')",
+        "join(base, LATEST_POINTER)"
+      ]
+    },
+    {
+      "call": "writeFileSync",
+      "target": "path",
+      "path": "src/decisions.mjs",
+      "line": 114,
+      "cite": "src/decisions.mjs:114",
+      "alsoWrites": 0,
+      "alsoAt": [],
+      "targets": [
+        "path"
+      ]
+    }
+  ],
+  "shells": [],
+  "testFiles": [
+    "test/adapter-conformance.test.mjs",
+    "test/adversarial.test.mjs",
+    "test/approval-workflow.test.mjs",
+    "test/canonical.test.mjs",
+    "test/cli.test.mjs",
+    "test/context.test.mjs",
+    "test/contract-conformance.test.mjs",
+    "test/contract.test.mjs",
+    "test/dashboard.test.mjs",
+    "test/determinism.test.mjs",
+    "test/draft-hash.test.mjs",
+    "test/draft-prompt.test.mjs",
+    "test/golden-ledger.test.mjs",
+    "test/identity.test.mjs",
+    "test/injection.test.mjs",
+    "test/kernel.test.mjs",
+    "test/key-hygiene.test.mjs",
+    "test/ledger.test.mjs",
+    "test/live-capture.test.mjs",
+    "test/live-cli.test.mjs",
+    "test/live-http.test.mjs",
+    "test/live-model.test.mjs",
+    "test/live-secret.test.mjs",
+    "test/live-smoke.test.mjs",
+    "test/no-network.test.mjs",
+    "test/prose-claims.test.mjs",
+    "test/readme-examples.test.mjs",
+    "test/redaction.test.mjs",
+    "test/repo-hygiene.test.mjs",
+    "test/rubric.test.mjs",
+    "test/runner.test.mjs",
+    "test/seal.test.mjs",
+    "test/stage-draft.test.mjs",
+    "test/stage-enrich.test.mjs",
+    "test/stage-gate.test.mjs",
+    "test/stage-handoff.test.mjs",
+    "test/stage-ingest.test.mjs",
+    "test/stage-queue.test.mjs",
+    "test/stage-route.test.mjs",
+    "test/stage-score.test.mjs"
+  ],
+  "gaps": [],
+  "counts": {
+    "modules": 40,
+    "edges": 114,
+    "manifests": 1,
+    "env": 1,
+    "routes": 0,
+    "clients": 0,
+    "hosts": 0,
+    "schedules": 0,
+    "observability": 0,
+    "authChecks": 0,
+    "writes": 6,
+    "shells": 0,
+    "testFiles": 40,
+    "gaps": 0,
+    "blockingGaps": 0
+  },
+  "generated_at": "2026-09-28T01:14:55.869Z"
+}
