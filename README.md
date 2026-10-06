@@ -388,6 +388,33 @@ arrived would be worse than one that will not start.
 
 The model defaults to `claude-sonnet-5` and `SIGNAL_DESK_MODEL` overrides it.
 
+### The lead ceiling
+
+A live run bills per lead: every admitted lead fetches the URLs its payload cites and makes two
+model calls, one to draft and one to judge. So a live run has a ceiling, **10 leads unless you say
+otherwise**:
+
+```console
+$ node bin/signal-desk.mjs run --live --signals ./signals --max-leads 25
+```
+
+A signals folder holding more payloads than the ceiling refuses to start with
+`LEAD_CEILING_EXCEEDED`, naming the count and the ceiling, before a single URL is fetched or a
+model is called, and writes nothing. That refusal is free, so it doubles as the preview; there is no
+separate dry run. `dlq --replay` is held to the same ceiling and takes the same flag, because a
+re-fed lead bills like a fresh one. A ceiling of zero, a negative one, or anything that is not a
+whole number refuses with `LEAD_CEILING_INVALID`, and `--max-leads` on a fixture `run` refuses
+rather than being ignored, since a fixture run bills nothing.
+
+Behind the start check, the kernel enforces the ceiling itself. A lead admitted past it never
+reaches `enrich` or anything after it, and gets its own `REFUSE` line with `LEAD_CEILING_REACHED`
+in the ledger, so a run handed too many leads by any caller stops at the ceiling with a record of
+every lead it declined, never a silent truncation. The ceiling is part of the run's config, so it is
+in the run id and the capture, and a replay reproduces it. The default lives in
+`src/live/config.mjs` as `DEFAULT_MAX_LEADS`. The per-request limits (source timeouts, the response
+byte cap, bounded retries, the model's token cap) bound what one request costs; the ceiling bounds
+how many leads make requests. `docs/LEAD-CEILING-SPEC.md` has the decisions.
+
 ### What live mode changes, and what it does not
 
 Four switches, and they are the whole difference:
@@ -605,7 +632,8 @@ no-server argument. `docs/M3-SPEC.md` is the milestone before it,
 carrying the stage-ownership argument for each hostile catch, the dashboard's contract and its
 escaping rule. `docs/M2-SPEC.md` and `docs/M1-SPEC.md` are the earlier ones, each with its own
 addendum on what the implementation taught.
-`docs/ADAPTERS.md` is the sender adapter contract.
+`docs/ADAPTERS.md` is the sender adapter contract. `docs/LEAD-CEILING-SPEC.md` is the per-run lead
+ceiling on live mode.
 
 ### Known boundaries
 
