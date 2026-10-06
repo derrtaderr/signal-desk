@@ -41,6 +41,42 @@ export class MissingSecretError extends Error {
   }
 }
 
+// THE PER-RUN LEAD CEILING. docs/LEAD-CEILING-SPEC.md.
+//
+// Live mode bills per lead: every admitted lead fetches its evidence URLs and makes two model calls.
+// The per-request caps in src/live/http.mjs and src/live/anthropic.mjs bound what ONE request costs;
+// nothing else bounds how many leads make requests, and a mis-sized signals folder is a bill. Ten is
+// enough for a first live run to show every path, and raising it is a flag typed on purpose.
+//
+// The default lives here and not in src/config.mjs, because fixture mode bills nothing and a key
+// there would move every fixture run id and the golden ledger for a control with nothing to guard.
+export const DEFAULT_MAX_LEADS = 10;
+
+// The first stage that reaches the network. The kernel counts leads admitted to it.
+export const CEILING_COUNTED_FROM = 'enrich';
+
+export class LeadCeilingInvalidError extends Error {
+  constructor(raw) {
+    super(
+      `--max-leads needs a whole number of leads of 1 or more, and got ${raw === undefined ? 'nothing' : JSON.stringify(raw)}. ` +
+        'A ceiling of zero, a negative ceiling or one that is not a number would either refuse every ' +
+        'lead or bound nothing, so it is refused rather than guessed at. Nothing was read or fetched.',
+    );
+    this.name = 'LeadCeilingInvalidError';
+    this.code = 'LEAD_CEILING_INVALID';
+  }
+}
+
+/**
+ * A ceiling from the command line. Plain decimal digits, no sign, no exponent, no padding, no zero.
+ */
+export function parseMaxLeads(raw) {
+  if (typeof raw !== 'string' || !/^[1-9][0-9]*$/.test(raw)) throw new LeadCeilingInvalidError(raw);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) throw new LeadCeilingInvalidError(raw);
+  return value;
+}
+
 export function resolveSignalSecret(env = {}) {
   const value = env[SECRET_VARIABLE];
   if (typeof value === 'string' && value.trim() !== '') return value.trim();
@@ -51,7 +87,7 @@ export function resolveSignalSecret(env = {}) {
  * The live config, derived from the fixture one so every unchanged rule is unchanged by
  * construction rather than by being retyped.
  */
-export function liveConfig({ secret, startedAt, model = DEFAULT_MODEL } = {}) {
+export function liveConfig({ secret, startedAt, model = DEFAULT_MODEL, maxLeads = DEFAULT_MAX_LEADS } = {}) {
   return {
     ...defaultConfig,
     mode: 'live',
@@ -61,6 +97,10 @@ export function liveConfig({ secret, startedAt, model = DEFAULT_MODEL } = {}) {
     clock: { mode: 'live', start: startedAt },
 
     model,
+
+    // The per-run lead ceiling, enforced by the kernel. Part of the config, so it is part of the run
+    // id and of the capture, and a replay reproduces a ceiling refusal byte for byte.
+    limits: { maxLeads, countedFrom: CEILING_COUNTED_FROM },
 
     ingest: {
       ...defaultConfig.ingest,
