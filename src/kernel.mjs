@@ -21,6 +21,24 @@ import { SEAL_STAGE, SEAL_LEAD_ID } from './ledger.mjs';
 
 const STAGE_ERROR = 'STAGE_ERROR';
 const CONTRACT_VIOLATION = 'CONTRACT_VIOLATION';
+const LEAD_CEILING_REACHED = 'LEAD_CEILING_REACHED';
+
+// THE PER-RUN LEAD CEILING. docs/LEAD-CEILING-SPEC.md.
+//
+// In live mode the stages from `countedFrom` onward bill per lead, so the number of leads admitted
+// to that stage is the number this run pays for. The CLI refuses to START a run whose signals are
+// over the ceiling; this is the invariant behind that courtesy, and it holds for any caller. A lead
+// that would be admitted past the ceiling never runs that stage or any later one. It is REFUSED,
+// with its own ledger line, filed under the stage it was refused entry to: never a silent
+// truncation, and never a lead that simply goes missing from the report.
+//
+// A config with no `limits` has no ceiling. That is fixture mode, which bills nothing.
+function ceilingOf(config) {
+  const limits = config?.limits;
+  if (limits === null || typeof limits !== 'object') return null;
+  if (!Number.isInteger(limits.maxLeads) || typeof limits.countedFrom !== 'string') return null;
+  return { maxLeads: limits.maxLeads, countedFrom: limits.countedFrom };
+}
 
 function initialLeadId(signal, index) {
   if (signal && typeof signal === 'object') {
@@ -39,6 +57,8 @@ function sortSignals(signals) {
 export async function runPipeline({ stages, signals, ctx, ledger }) {
   const leads = [];
   const summary = { PASS: 0, REFUSE: 0, NEEDS_HUMAN: 0, total: 0 };
+  const ceiling = ceilingOf(ctx.config);
+  let admitted = 0;
 
   for (const { signal, index } of sortSignals(signals)) {
     let leadId = initialLeadId(signal, index);
@@ -49,9 +69,22 @@ export async function runPipeline({ stages, signals, ctx, ledger }) {
 
     for (const stage of stages) {
       let result;
+      const overCeiling =
+        ceiling !== null && stage.name === ceiling.countedFrom && admitted >= ceiling.maxLeads;
+      if (ceiling !== null && stage.name === ceiling.countedFrom && !overCeiling) admitted += 1;
 
       try {
-        result = assertStageResult(await stage.run(input, ctx), stage.name);
+        result = overCeiling
+          ? {
+              status: REFUSE,
+              output: input,
+              entries: [],
+              reason_codes: [LEAD_CEILING_REACHED],
+              detail:
+                `${stage.name} was not run: this run has a ceiling of ${ceiling.maxLeads} lead(s) and ` +
+                `${admitted} were already admitted. Re-run the rest under a ceiling sized on purpose.`,
+            }
+          : assertStageResult(await stage.run(input, ctx), stage.name);
       } catch (error) {
         const isContract = error instanceof ContractViolationError;
         result = {
@@ -143,4 +176,4 @@ export async function runPipeline({ stages, signals, ctx, ledger }) {
   return { run_id: ctx.run_id, leads, summary };
 }
 
-export { PASS, REFUSE, NEEDS_HUMAN, STAGE_ERROR, CONTRACT_VIOLATION };
+export { PASS, REFUSE, NEEDS_HUMAN, STAGE_ERROR, CONTRACT_VIOLATION, LEAD_CEILING_REACHED };
