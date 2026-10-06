@@ -28,7 +28,14 @@ import {
   secretFingerprint,
   SecretMismatchError,
 } from './live/keys.mjs';
-import { liveConfig, resolveSignalSecret, MODEL_VARIABLE, SECRET_VARIABLE } from './live/config.mjs';
+import {
+  liveConfig,
+  resolveSignalSecret,
+  parseMaxLeads,
+  DEFAULT_MAX_LEADS,
+  MODEL_VARIABLE,
+  SECRET_VARIABLE,
+} from './live/config.mjs';
 import { loadLiveSignals, liveSignalFromBytes } from './live/signals.mjs';
 import { writeDeadLetter, readDeadLetters, isDeadLetterable, dlqPath } from './live/dlq.mjs';
 import {
@@ -62,10 +69,10 @@ Usage:
 Flags, per verb. Anything else is refused rather than ignored, so no invocation can quietly
 become a different one than you typed. Write them as "--flag value", never "--flag=value".
 
-  run       --live, --signals <dir>
+  run       --live, --signals <dir>, --max-leads <n>
   approve   --by <name>, --note <text>
   reject    --by <name>, --note <text>
-  dlq       --replay
+  dlq       --replay, --max-leads <n>
 
 There is no install step, so the invocation is spelled out in full. A bare signal-desk is
 not on PATH in a fresh clone.
@@ -81,6 +88,10 @@ This tool never sends mail; handoffs are written as dry-run JSON.
 Live mode brings your own key. Export SIGNAL_DESK_ANTHROPIC_KEY (or ANTHROPIC_API_KEY)
 and SIGNAL_DESK_SIGNAL_SECRET, put signed payload files in ./signals/, and every draft
 faces exactly the gates the fixture demo shows.
+
+A live run bills per lead, so it has a lead ceiling: ${DEFAULT_MAX_LEADS} unless --max-leads <n> says
+otherwise. A signals folder holding more than the ceiling refuses to start, before anything is
+fetched, and names the count. dlq --replay is held to the same ceiling.
 
 A live run captures what it observed, so it replays with no model key. Replaying also
 verifies every payload signature when SIGNAL_DESK_SIGNAL_SECRET is set; without it, the
@@ -147,7 +158,14 @@ export function writeArtifact(path, contents) {
 
 // --- run -------------------------------------------------------------------------------
 
-async function verbRun({ out, env, cwd }) {
+async function verbRun({ args, out, err, env, cwd }) {
+  // Accepted by the flag table because run --live takes it, and refused here because a fixture run
+  // bills nothing. Ignoring it would be a flag that silently means nothing, the --live=true shape.
+  if (flagPresent(args, '--max-leads')) {
+    err('--max-leads bounds a live run, and a fixture run bills nothing, so it has no ceiling.');
+    err('Did you mean: node bin/signal-desk.mjs run --live --max-leads <n>');
+    return 2;
+  }
   const base = runsDir(env, cwd);
   // Decisions a human recorded with `approve` / `reject`, layered over the shipped corpus. A
   // fresh clone has none, which is what keeps the README's example output true for everyone.
@@ -291,7 +309,33 @@ function deadLetterIngestRefusals({ base, report, signals, run_id, at, out }) {
   return written;
 }
 
-async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at }) {
+// THE START-TIME CEILING CHECK. docs/LEAD-CEILING-SPEC.md. After the credentials, before the
+// transport exists, so a refusal has fetched nothing, called no model and written nothing. It
+// counts parsed payloads, which is a conservative upper bound: the kernel counts the exact number
+// (leads that cleared ingest) and stops AT the ceiling whatever a caller checked first.
+function ceilingRefusal({ signals, maxLeads, err }) {
+  if (signals.length <= maxLeads) return false;
+  err(
+    `LEAD_CEILING_EXCEEDED: ${signals.length} signal(s) to run and a ceiling of ${maxLeads} lead(s). ` +
+      'Every admitted lead bills its evidence fetches and two model calls, so the run was refused ' +
+      'before it started. Nothing was fetched, no model was called and no run was written.',
+  );
+  err(`Split the signals across runs, or raise the ceiling on purpose with --max-leads ${signals.length}.`);
+  return true;
+}
+
+// Reads --max-leads if present. Returns the ceiling, or null after printing the refusal.
+function maxLeadsFrom(args, err) {
+  if (!flagPresent(args, '--max-leads')) return DEFAULT_MAX_LEADS;
+  try {
+    return parseMaxLeads(flagValue(args, '--max-leads'));
+  } catch (error) {
+    err(`${error.code}: ${error.message}`);
+    return null;
+  }
+}
+
+async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads = DEFAULT_MAX_LEADS }) {
   // Credentials first, before anything is read or written. See the note above.
   let key;
   let secret;
@@ -303,9 +347,11 @@ async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransp
     return 2;
   }
 
+  if (ceilingRefusal({ signals, maxLeads, err })) return 2;
+
   const transport = httpTransport ?? nodeTransport();
   const clock = recordingClock();
-  const config = liveConfig({ secret, startedAt: at, model: env[MODEL_VARIABLE] });
+  const config = liveConfig({ secret, startedAt: at, model: env[MODEL_VARIABLE], maxLeads });
 
   // The CLI is the one place that holds BOTH secrets, so it is the one place that can build the
   // scrubber every transport applies to text that came from outside. See test/key-hygiene.test.mjs.
@@ -378,6 +424,11 @@ async function verbRunLive({ args, out, err, env, cwd, now, httpTransport }) {
   const signalsDir = flagValue(args, '--signals') ?? join(cwd, LIVE_SIGNALS_DIR);
   const at = now();
 
+  // A malformed ceiling is a malformed invocation, refused where an unknown flag is: before the
+  // credentials are read, so the operator fixes the command they typed first.
+  const maxLeads = maxLeadsFrom(args, err);
+  if (maxLeads === null) return 2;
+
   // Read AFTER the credential check inside executeLive, so a keyless invocation touches no files.
   // The loader is passed as a thunk rather than its result for exactly that reason.
   let key;
@@ -402,7 +453,7 @@ async function verbRunLive({ args, out, err, env, cwd, now, httpTransport }) {
     return 2;
   }
 
-  return executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at });
+  return executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads });
 }
 
 // --- dlq ---------------------------------------------------------------------------------
@@ -410,6 +461,15 @@ async function verbRunLive({ args, out, err, env, cwd, now, httpTransport }) {
 async function verbDlq(context) {
   const { args, out, err, env, cwd } = context;
   const base = runsDir(env, cwd);
+
+  if (flagPresent(args, '--max-leads') && !flagPresent(args, '--replay')) {
+    err('--max-leads bounds a replay, which bills like a live run. Listing the queue bills nothing.');
+    err('Did you mean: node bin/signal-desk.mjs dlq --replay --max-leads <n>');
+    return 2;
+  }
+  const maxLeads = maxLeadsFrom(args, err);
+  if (maxLeads === null) return 2;
+
   const letters = readDeadLetters(base);
 
   if (flagPresent(args, '--replay')) {
@@ -445,6 +505,7 @@ async function verbDlq(context) {
       err,
       httpTransport: context.httpTransport,
       at: context.now(),
+      maxLeads,
     });
   }
 
@@ -884,18 +945,18 @@ async function verbDashboard({ args, out, err, env, cwd }) {
 // forgetting the other.
 
 const ACCEPTED_FLAGS = Object.freeze({
-  run: ['--live', '--signals'],
+  run: ['--live', '--signals', '--max-leads'],
   queue: [],
   approve: ['--by', '--note'],
   reject: ['--by', '--note'],
   explain: [],
   replay: [],
   dashboard: [],
-  dlq: ['--replay'],
+  dlq: ['--replay', '--max-leads'],
 });
 
 // Flags that take a value, so the value is not mistaken for a flag or for a positional argument.
-const FLAGS_WITH_VALUES = Object.freeze(['--signals', '--by', '--note']);
+const FLAGS_WITH_VALUES = Object.freeze(['--signals', '--by', '--note', '--max-leads']);
 
 function unknownFlag(verb, args) {
   const accepted = ACCEPTED_FLAGS[verb];

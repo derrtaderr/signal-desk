@@ -191,6 +191,9 @@ contacted a stranger's server on the strength of a run it could not finish.
 | No signal secret | `LIVE_SECRET_MISSING`, naming the variable and why it is not optional | 2 |
 | No signals directory | the path it looked for, plus `--signals <dir>` and a pointer to the README | 2 |
 | Empty signals directory | "holds no .json payload files, so there is nothing to run" | 2 |
+| More signals than the lead ceiling | `LEAD_CEILING_EXCEEDED`, naming the count, the ceiling and `--max-leads <n>`; nothing fetched, nothing written | 2 |
+| `--max-leads` of 0, negative, non-numeric or missing | `LEAD_CEILING_INVALID`, before the credentials are read | 2 |
+| `--max-leads` on a fixture `run`, or on `dlq` without `--replay` | why the flag does not apply there, and the invocation that takes it | 2 |
 | Live run completes | the same run summary as fixture mode, plus a replay line and a dlq line if anything was dead-lettered | 0 |
 | Unknown or malformed flag | the flag it did not understand, and what the verb accepts | 2 |
 
@@ -243,6 +246,26 @@ output, which is exactly why it mattered: the run summary looks correct because 
 just not the one anybody asked for. Accepted flags are declared per verb; anything else exits 2 naming
 the flag and listing what the verb takes. `--flag=value` is refused even for accepted flags, because
 supporting one spelling and ignoring the other is how this happened.
+
+### The lead ceiling, added for system map §4
+
+A live run bills per lead, so it has a ceiling: 10 by default (`DEFAULT_MAX_LEADS` in
+`src/live/config.mjs`), `--max-leads <n>` for this run. Spec: `docs/LEAD-CEILING-SPEC.md`.
+
+```
+run --live --signals ./signals                 11 payloads, default ceiling 10 -> refused at start, exit 2
+run --live --signals ./signals --max-leads 11  runs
+dlq --replay --max-leads <n>                   the same ceiling, because a re-fed lead bills like a fresh one
+```
+
+The start refusal is the one a walker meets, and it is also the preview: it runs before any network
+call, so a too-small ceiling costs nothing and prints the count. There is no separate dry run.
+
+Behind it, the kernel stops a run AT the ceiling whatever its caller checked: a lead admitted past
+the ceiling never runs `enrich` or anything after it, and gets its own `REFUSE` line with reason
+`LEAD_CEILING_REACHED` at `enrich`. From the CLI that state is unreachable, because the start check
+reads the same signals; it is the invariant for any other caller of the kernel, and a walker sees it
+as an ordinary refusal row in the run summary, `explain` and the dashboard.
 
 ### The DLQ recovery path
 
