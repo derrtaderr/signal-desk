@@ -1,6 +1,23 @@
-# signal-desk
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/signal-desk-wordmark-dark.png">
+    <img src="assets/signal-desk-wordmark-light.png" alt="signal-desk" width="500">
+  </picture>
+  <br>
+  A signal-to-outreach pipeline where every decision can be inspected, replayed, or refused.
+</p>
 
-A signal-to-outreach pipeline where every decision can be inspected, replayed, or refused.
+<p align="center">
+  <img src="https://img.shields.io/badge/node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white" alt="Node 20 or newer">
+  <img src="https://img.shields.io/badge/dependencies-0-F97316" alt="Zero dependencies">
+  <img src="https://img.shields.io/badge/mail%20sent-never-8B949E" alt="Never sends mail">
+</p>
+
+<p align="center">
+  <a href="#try-it">
+    <img src="assets/signal-desk-demo.gif" alt="Running node bin/signal-desk.mjs run on the recorded fixture corpus: 1 passed to handoff, 1 awaiting a human, 12 refused, 14 signals in total, then a decision per lead, and nothing was sent." width="760">
+  </a>
+</p>
 
 An inbound intent signal arrives. Something has to enrich it, score it, decide who owns it,
 write to the person, check that what was written is true and safe, and then stop and wait for
